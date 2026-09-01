@@ -1,180 +1,191 @@
+```markdown
 ---
 name: minimal-code
-description: Write the smallest correct, readable, tested change — KISS, YAGNI, DRY, explicit errors, and test-driven development. Use whenever writing, modifying, refactoring, or fixing code, and when reviewing a change for unnecessary complexity, speculative abstraction, or missing tests.
+description: Write the smallest correct, readable, maintainable change. Use whenever writing, modifying, refactoring, fixing, or reviewing code, especially when deciding whether to add abstractions, dependencies, configuration, helpers, tests, or broader refactors.
 license: MIT
 metadata:
   author: recursivecurry
-  version: "1.1.0"
+  version: 2.0.0
 ---
 
 # Minimal Code
 
-Produce the smallest correct, maintainable change that satisfies the request — smallest, not
-shortest: a change that is fragile, swallows an error, or drops a validation loses to a longer
-one that does not.
+Make the smallest correct change that fully satisfies the request.
 
-**The Core Principles below are the authority.** Everything above them is either a step the
-principles do not spell out, or a trigger for noticing that one is about to be broken. Where
-this section and a principle appear to disagree, the principle wins.
+"Smallest" means minimum justified complexity, not minimum characters or lines. Never sacrifice correctness, safety, validation, clarity, or required behavior merely to reduce the diff.
 
-## Before you start
+## Core Principles
 
-- Restate what is actually being asked. The requested scope is the deliverable — do not narrow it.
-- Inspect the affected code, its call sites, and its tests. Trace the real flow rather than
-  assuming how it works.
-- Search for existing helpers, constants, and conventions before inventing new ones.
-- Resolve ambiguity from the repository — tests, docs, adjacent code, git history. Ask only when
-  the answer would change what you build.
+Apply KISS, YAGNI, and DRY pragmatically:
 
-## Tests
+- **KISS:** Prefer the simplest solution that is correct and clear.
+- **YAGNI:** Do not add behavior, abstraction, configuration, or extensibility without a current need.
+- **DRY:** Reuse shared concepts and remove meaningful duplication, but do not abstract merely because code looks similar.
 
-Principle V governs. Two things it leaves open:
+Treat programming proverbs as heuristics, not laws. Prefer repository evidence, current requirements, and maintainability over mechanical rules.
 
-- **Red-green-refactor is a SHOULD, not a MUST.** Write the failing test first where it fits.
-  What is required is that the change ends up tested, not the order you got there.
-- **If the repository has no test structure**, say so and state how you verified the change
-  instead. Never silently skip verification.
+## 1. Understand Before Editing
 
-Run the tests and report the exact command. If you ran only a subset, say so and say why.
-Separate pre-existing failures from ones your change caused. Never report a test as passing
-that you did not run.
+Before changing code:
 
-## Stop signals
+1. Understand the requested behavior and scope.
+2. Inspect the affected code, callers, tests, configuration, and relevant docs.
+3. Trace the real execution or data flow when behavior is not obvious.
+4. Search for existing helpers, types, constants, utilities, and project conventions.
+5. Resolve ambiguity from repository evidence when possible.
 
-These mean a principle is about to break. When one shows up, delete what you were about to
-write and take the simpler path. The last column cites the principle at stake.
+Do not guess about behavior that can be verified from the repository.
 
-| Signal | Do instead | Principle |
-| --- | --- | --- |
-| "This will be useful later" / "just in case" | Write it when the need is real | I |
-| "Let's make this configurable" with one caller | Hardcode it; parameterize at the second caller | I |
-| An interface, base class, or factory with one implementation | Use the concrete type | I, III.5 |
-| A wrapper around a library "for flexibility" | Call the library directly | III.5 |
-| "I'll extract a helper" after seeing it twice | Wait for the third occurrence | II.1 |
-| "These two look similar, I'll merge them" | Merge only if they are the same *concept* and will change together | II.4 |
-| A new boolean parameter that selects between two behaviors | Two functions with honest names | III.2 |
-| `except: pass`, an ignored error return, an empty catch | Handle it, or let it propagate | III.8 |
-| "I'll clean up this other file while I'm here" | Separate change | VI |
-| "It works, I'm not sure why" | Trace it until you can explain it | III.9 |
-| A comment restating the line below it | Delete the comment, or fix the name | IV |
-| Deleting a validation or check to make the diff smaller | Keep the check | VI |
+Ask a clarification question only when unresolved ambiguity would materially change the implementation.
 
-## Before you report done
+## 2. Use the Simplest Sufficient Solution
 
-- [ ] Solves the stated problem, and only that problem.
-- [ ] You stopped at the lowest ladder rung that works.
-- [ ] Nothing unused was added: abstraction, dependency, config knob, parameter, extension point.
-- [ ] A bug fix removed the root cause, and you checked the other callers.
-- [ ] Where the repository has tests, the change is covered — failure paths included — and you
-      ran them.
-- [ ] The project's formatter and linter ran clean.
-- [ ] The diff is easy to review and revert.
-- [ ] You can explain the design in a few plain sentences.
+Prefer, in order:
 
-An unchecked box is remaining work, not a footnote for the summary.
+1. No change when the requested behavior already exists.
+2. Existing project code or patterns.
+3. Standard-library functionality.
+4. Native language, platform, framework, database, or browser features.
+5. Already-installed dependencies.
+6. A small direct implementation.
+7. A new abstraction or dependency only when simpler options are insufficient.
 
-Then report: what changed, which files, which checks actually ran, and any assumption you made.
+Stop at the first option that correctly solves the problem.
 
----
+Prefer boring, explicit code over clever code.
 
-# Core Principles
+Do not add:
 
-## I. Simplicity First (KISS & YAGNI)
+- speculative functionality,
+- extension points for hypothetical callers,
+- configuration without a current need,
+- wrappers that merely mirror another API,
+- unnecessary indirection,
+- boilerplate or scaffolding without a concrete purpose.
 
-Write simple code that solves current requirements. Do NOT anticipate hypothetical future needs.
+Complexity must be justified by a current requirement.
 
-- **MUST** choose direct and clear implementations over complex patterns
-- **MUST NOT** create features, abstractions, or extension points not currently needed
-- **MUST NOT** add code "just in case it might be needed later"
-- **MUST** refactor only when a real need arises
-- **MUST** justify any complexity beyond the minimum required for the current task
+## 3. Reuse Without Premature Abstraction
 
-**Rationale**: Three similar lines of code is better than a premature abstraction.
-Complexity is a cost that must be paid continuously; simplicity pays dividends.
+Reuse existing code when it already represents the same concept.
 
-## II. Don't Repeat Yourself (DRY)
+Remove duplication when doing so creates a clearer single source of truth.
 
-Eliminate duplication by maintaining a single source of truth.
+Do not merge code merely because it looks similar. Similar-looking code may represent different concepts or evolve independently.
 
-- **MUST** extract repeated logic into functions or modules when the same concept appears three times (Rule of Three)
-- **MUST** use constants or configuration for repeated values
-- **MUST** apply inheritance or composition to share behavior across classes when appropriate
-- **MUST** distinguish between true duplication (same concept) and coincidental similarity (different concepts that happen to look alike)
-- **MUST** balance DRY with readability; premature abstraction creates unnecessary complexity
+Extract a helper or abstraction when it makes the current code meaningfully clearer, safer, or easier to maintain — not merely because repetition exists.
 
-**Rationale**: Duplication leads to inconsistency and maintenance burden. A single source
-of truth ensures changes propagate correctly throughout the codebase.
+Prefer concrete implementations until an abstraction has a real purpose.
 
-## III. Programming Proverbs
+## 4. Keep Behavior Explicit
 
-1. **MUST** choose clear, straightforward code over clever or overly sophisticated solutions.
-2. **MUST** make behavior explicit; avoid hidden, implicit, or surprising behavior.
-3. **MUST** prefer the simplest solution that satisfies the current requirements; allow complexity only when necessary.
-4. **MUST** optimize for readability; prefer flat, easy-to-follow control flow over deep nesting.
-5. **MUST NOT** introduce unnecessary abstractions, indirection, or dependencies when a direct implementation is sufficient.
-6. **MUST** keep abstractions small, focused, and easy to understand.
-7. **MUST** make default behavior safe, useful, and predictable.
-8. **MUST** handle errors explicitly; do not silently ignore failures unless explicitly required.
-9. **MUST NOT** guess when requirements or behavior are ambiguous; use available context and evidence to resolve ambiguity.
-10. **SHOULD** prefer one obvious and consistent way to perform the same kind of task across the codebase.
-11. **SHOULD** follow established rules and conventions consistently, but prioritize practical correctness over rigid purity.
-12. **MUST** keep responsibilities clear across modules and components, and express intent through meaningful names and concise documentation.
-13. **MUST** prefer implementations that can be explained simply; if a design is difficult to explain, simplify it before adding more complexity.
+Code should make its behavior easy to understand.
 
-**Rationale**: Clear, simple, and explicit code reduces cognitive load and improves maintainability. Prefer predictable, practical, and explainable solutions over cleverness, hidden behavior, or unnecessary complexity.
+- Prefer clear names and straightforward control flow.
+- Avoid hidden state and surprising side effects.
+- Keep responsibilities focused.
+- Use comments for non-obvious reasons or constraints, not to restate the code.
+- Follow established project conventions unless correctness or clarity requires otherwise.
+- Avoid unrelated formatting or cleanup.
 
-## IV. Human-Readable Code
+Do not refactor unrelated code as part of a feature or bug fix.
 
-Code MUST be easy for humans to read and understand. Code is read far more often than written.
+## 5. Handle Failure Deliberately
 
-- **MUST** use variable, function, and class names that clearly reveal intent
-- **MUST** break down complex logic into small functions with descriptive names
-- **MUST** write comments that explain "why" while the code expresses "what"
-- **MUST** maintain consistent code style (use language-appropriate linters/formatters)
-- **MUST NOT** use magic numbers or hardcoded strings; define them as named constants
-- **MUST** keep functions short and focused on a single responsibility
+Do not silently ignore errors unless that behavior is explicitly intended.
 
-**Rationale**: Code that is easy to read is easy to maintain, debug, and extend.
-Self-documenting code reduces cognitive load and onboarding time.
+For relevant failure modes:
 
-## V. Test-Driven Development
+- handle the error,
+- propagate it,
+- or preserve the project's established failure behavior.
 
-Every implementation MUST be accompanied by tests that verify its correctness.
+Consider boundary cases that plausibly affect the requested change, including invalid or empty inputs, compatibility, ordering or concurrency, security, data loss, and operational failures.
 
-- **MUST** write tests for all new functionality
-- **SHOULD** follow Red-Green-Refactor cycle: write failing test → implement → refactor
-- **MUST** ensure tests are independent and can run in any order
-- **MUST** test edge cases and error conditions, not just the happy path
-- **MUST** keep tests readable and maintainable—tests are documentation
-- **MUST NOT** commit code that breaks existing tests
+Do not add defensive code for purely hypothetical scenarios.
 
-**Rationale**: Tests provide confidence in code correctness, enable safe refactoring,
-serve as living documentation, and catch regressions early.
-
-## VI. Minimal Implementation Ladder
-
-Before coding, read the task, inspect the affected code, and trace the real flow. Then stop at the first rung that works:
-
-1. **MUST NOT** build anything not required now. *(YAGNI)*
-2. **MUST** reuse existing code before writing new code.
-3. **MUST** use the standard library when suitable.
-4. **MUST** prefer native platform features over custom code.
-5. **MUST** reuse installed dependencies; **MUST NOT** add one for trivial functionality.
-6. **MUST** choose the smallest clear implementation.
-7. **MUST** write only the minimum new code needed.
+## 6. Fix Causes, Not Symptoms
 
 For bug fixes:
 
-- **MUST** fix the root cause, not just the reported symptom.
-- **MUST** inspect shared callers before patching shared behavior.
-- **MUST** prefer one correct shared fix over repeated local guards.
+1. Reproduce or establish the failure when practical.
+2. Identify the root cause.
+3. Inspect other callers or shared paths affected by that cause.
+4. Fix the cause at the narrowest correct location.
+5. Add regression coverage when the repository supports it.
 
-General rules:
+Prefer one correct shared fix over repeated local workarounds.
 
-- **MUST NOT** add speculative abstractions, boilerplate, scaffolding, or extension points.
-- **SHOULD** prefer deletion over addition and boring code over clever code.
-- **MUST** minimize files changed and diff size, but never at the cost of correctness.
-- **MUST** choose robust edge-case behavior over shorter but fragile code.
-- **MUST NOT** weaken security, validation, data-loss protection, or accessibility for simplicity.
+Do not weaken validation, security, accessibility, or data-integrity checks to make a bug disappear.
 
-**Rationale**: Prefer the smallest correct change, reuse proven solutions first, and reduce complexity without sacrificing correctness or safety.
+## 7. Dependencies and Configuration
+
+Before adding a dependency, confirm that existing project code, the standard library, native platform features, or installed dependencies cannot reasonably solve the problem.
+
+Add a dependency only when its concrete benefit outweighs its maintenance, security, compatibility, and operational cost.
+
+Do not add configuration options merely to make implementation choices configurable. Add configuration when users, environments, or existing architecture actually require variation.
+
+## 8. Test the Changed Behavior
+
+Changes that affect behavior should be verified.
+
+Use the repository's existing testing conventions when available.
+
+Prefer tests that cover:
+
+- the changed behavior,
+- relevant regression cases,
+- meaningful failure or boundary cases.
+
+Writing the failing test first is useful when practical, but correctness and regression coverage matter more than ceremony.
+
+If the repository has no applicable test structure, use the narrowest meaningful alternative validation and state what you did.
+
+Run the relevant tests or checks.
+
+Never claim a test passed unless you actually ran it.
+
+If only a subset was run, say which subset and why.
+
+When failures occur, distinguish failures caused by the change from pre-existing or unrelated failures when possible.
+
+## 9. Keep the Diff Focused
+
+Every changed file and line should have a reason connected to the request.
+
+Prefer local, reversible changes.
+
+Avoid:
+
+- unrelated refactors,
+- broad renaming,
+- drive-by cleanup,
+- unnecessary formatting changes,
+- behavior changes outside the requested scope.
+
+Minimize diff size only after correctness and maintainability are satisfied.
+
+## 10. Before Reporting Done
+
+Verify that:
+
+- the requested problem is actually solved;
+- the implementation is no more complex than necessary;
+- existing code was reused where appropriate;
+- no speculative abstraction, dependency, configuration, or feature was added;
+- errors and relevant edge cases are handled appropriately;
+- a bug fix addresses the root cause rather than only the symptom;
+- relevant tests or checks were run;
+- the diff contains no unrelated changes;
+- the resulting code is understandable and consistent with the project.
+
+If one of these checks reveals required work, fix it before reporting completion.
+
+Then report:
+
+- what changed,
+- which files changed,
+- which tests or checks actually ran,
+- and any material assumptions, limitations, or unresolved risks.
+```
