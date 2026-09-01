@@ -22,3 +22,20 @@ Manual install for Claude Code:
 ```bash
 cp -r skills/minimal-code ~/.claude/skills/
 ```
+
+## Making `minimal-code` always apply
+
+An agent loads a skill only when it judges the skill relevant, and it loads it at the *start*
+of a task — not at the end, where the pre-flight checklist matters most. Coding principles are
+meant to hold on every change, so back the skill with a pointer in your project's `CLAUDE.md`
+(or `AGENTS.md`):
+
+```markdown
+Follow the minimal-code skill when writing or changing code.
+
+Load it before adding any new abstraction, dependency, or configuration option,
+and again before reporting a change as done.
+```
+
+The skill holds the detail; the pointer is what gets it consulted at the two moments that
+decide whether the change stays small.

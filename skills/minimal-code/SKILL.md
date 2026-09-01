@@ -4,108 +4,76 @@ description: Write the smallest correct, readable, tested change — KISS, YAGNI
 license: MIT
 metadata:
   author: recursivecurry
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Minimal Code
 
-Produce the smallest correct, maintainable change that satisfies the request. The full
-principles are at the bottom of this file and are authoritative; the workflow and stop signals
-above them are how to apply the principles in practice.
+Produce the smallest correct, maintainable change that satisfies the request — smallest, not
+shortest: a change that is fragile, swallows an error, or drops a validation loses to a longer
+one that does not.
 
-Smallest does not mean shortest. A shorter change that is fragile, silently swallows an error,
-or drops a validation loses to a longer one that does not — see Ladder rule "MUST choose robust
-edge-case behavior over shorter but fragile code."
+**The Core Principles below are the authority.** Everything above them is either a step the
+principles do not spell out, or a trigger for noticing that one is about to be broken. Where
+this section and a principle appear to disagree, the principle wins.
 
-## Workflow
+## Before you start
 
-### 1. Understand before typing
-
-- Read the task and restate what is actually being asked. The requested scope is the deliverable.
+- Restate what is actually being asked. The requested scope is the deliverable — do not narrow it.
 - Inspect the affected code, its call sites, and its tests. Trace the real flow rather than
   assuming how it works.
 - Search for existing helpers, constants, and conventions before inventing new ones.
-- When behavior is ambiguous, resolve it from the repository — tests, docs, neighboring code.
-  Ask only when the ambiguity blocks a correct implementation. Never guess.
+- Resolve ambiguity from the repository — tests, docs, adjacent code, git history. Ask only when
+  the answer would change what you build.
 
-### 2. Stop at the first rung that works
+## Tests
 
-Walk the Minimal Implementation Ladder (Principle VI) top to bottom and stop at the first rung
-that solves the problem: build nothing not required now → reuse existing code → standard library
-→ native platform features → installed dependencies → smallest clear implementation → minimum
-new code. Adding a dependency for trivial functionality is a violation, not a shortcut.
+Principle V governs. Two things it leaves open:
 
-For a bug fix, find the root cause first. If the broken behavior is shared, fix it once at the
-shared site after checking the other callers — do not scatter local guards at each symptom.
+- **Red-green-refactor is a SHOULD, not a MUST.** Write the failing test first where it fits.
+  What is required is that the change ends up tested, not the order you got there.
+- **If the repository has no test structure**, say so and state how you verified the change
+  instead. Never silently skip verification.
 
-### 3. Write the test first
-
-Red → green → refactor. Write a test that fails for the right reason, make it pass, then clean
-up. Cover the error conditions and edge cases, not just the happy path: empty input, invalid
-input, boundary values. Tests must be independent of each other and of execution order.
-
-If the repository has no test structure, say so and describe how the change was verified
-instead — do not silently skip verification.
-
-### 4. Write the code
-
-- Name things so the intent is obvious; no magic numbers or inline literals.
-- Keep control flow flat. Prefer an early return to another nesting level.
-- Handle every error explicitly. A swallowed exception is a defect unless the codebase
-  swallows it deliberately and you can point to why.
-- Match the surrounding conventions in style, naming, and structure.
-- Comment the *why*. The code already states the *what*.
-- Change as few files as possible, and touch nothing unrelated to the task.
-
-### 5. Self-review before finishing
-
-Answer each of these honestly. Any "no" means go back:
-
-- Does the change solve the stated problem, and only that problem?
-- Is there a simpler implementation that is equally correct?
-- Can every abstraction, parameter, and file added be justified by a *current* requirement?
-- Is every new behavior covered by a test, including its failure paths?
-- Do the existing tests still pass? (Run them. Report the command.)
-- Could a reviewer understand the diff without asking what it is for?
-- Can the design be explained in a few plain sentences? If not, simplify it before adding more.
-
-Then report: what changed, which files, which checks were actually run, and any assumption you
-made. Never claim a test passed that was not executed.
+Run the tests and report the exact command. If you ran only a subset, say so and say why.
+Separate pre-existing failures from ones your change caused. Never report a test as passing
+that you did not run.
 
 ## Stop signals
 
-These phrases, in your own reasoning, mean a principle is about to be broken. When one shows
-up, delete the code you were about to write and take the simpler path.
+These mean a principle is about to break. When one shows up, delete what you were about to
+write and take the simpler path. The last column cites the principle at stake.
 
-| Signal | Violation | Do instead |
+| Signal | Do instead | Principle |
 | --- | --- | --- |
-| "This will be useful later" / "just in case" | YAGNI | Write it when the need is real |
-| "Let's make this configurable" with one caller | YAGNI | Hardcode it; parameterize at the second caller |
-| An interface, base class, or factory with one implementation | YAGNI | Use the concrete type |
-| A wrapper around a library "for flexibility" | Speculative indirection | Call the library directly |
-| "I'll extract a helper" after seeing it twice | Premature abstraction | Rule of Three — wait for the third |
-| "These two look similar, I'll merge them" | Coincidental similarity | Merge only if they are the same *concept* and will change together |
-| A boolean parameter that switches what the function does | Hidden behavior | Two functions with honest names |
-| `except: pass`, an ignored error return, an empty catch | Silent failure | Handle it, or let it propagate |
-| "I'll clean up this other file while I'm here" | Scope creep | Separate change |
-| "It works, I'm not sure why" | Guessing | Trace it until you can explain it |
-| A comment restating the line below it | Noise | Delete the comment, or fix the name |
-| Deleting a validation or check to make the diff smaller | Fragility for brevity | Keep the check |
+| "This will be useful later" / "just in case" | Write it when the need is real | I |
+| "Let's make this configurable" with one caller | Hardcode it; parameterize at the second caller | I |
+| An interface, base class, or factory with one implementation | Use the concrete type | I, III.5 |
+| A wrapper around a library "for flexibility" | Call the library directly | III.5 |
+| "I'll extract a helper" after seeing it twice | Wait for the third occurrence | II.1 |
+| "These two look similar, I'll merge them" | Merge only if they are the same *concept* and will change together | II.4 |
+| A new boolean parameter that selects between two behaviors | Two functions with honest names | III.2 |
+| `except: pass`, an ignored error return, an empty catch | Handle it, or let it propagate | III.8 |
+| "I'll clean up this other file while I'm here" | Separate change | VI |
+| "It works, I'm not sure why" | Trace it until you can explain it | III.9 |
+| A comment restating the line below it | Delete the comment, or fix the name | IV |
+| Deleting a validation or check to make the diff smaller | Keep the check | VI |
 
-## Trade-offs the principles do not settle
+## Before you report done
 
-Two principles collide often enough to name the tiebreakers:
+- [ ] Solves the stated problem, and only that problem.
+- [ ] You stopped at the lowest ladder rung that works.
+- [ ] Nothing unused was added: abstraction, dependency, config knob, parameter, extension point.
+- [ ] A bug fix removed the root cause, and you checked the other callers.
+- [ ] Where the repository has tests, the change is covered — failure paths included — and you
+      ran them.
+- [ ] The project's formatter and linter ran clean.
+- [ ] The diff is easy to review and revert.
+- [ ] You can explain the design in a few plain sentences.
 
-- **DRY vs. YAGNI.** Rule of Three decides. Two occurrences stay duplicated; the third earns the
-  abstraction. Three similar lines beat a premature abstraction.
-- **DRY vs. readability.** If the shared abstraction is harder to follow than the duplication it
-  removes, keep the duplication.
-- **Small diff vs. correctness.** Correctness wins, always.
-- **Simplicity vs. safety.** Never trade away security, validation, data-loss protection, or
-  accessibility for a simpler-looking implementation.
-- **Existing convention vs. these principles.** Follow the codebase, unless its convention is
-  actually wrong on correctness, safety, or clarity. Do not launch a cleanup crusade from inside
-  an unrelated task.
+An unchecked box is remaining work, not a footnote for the summary.
+
+Then report: what changed, which files, which checks actually ran, and any assumption you made.
 
 ---
 
