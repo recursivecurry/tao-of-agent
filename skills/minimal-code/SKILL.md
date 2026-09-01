@@ -1,4 +1,3 @@
-```markdown
 ---
 name: minimal-code
 description: Write the smallest correct, readable, maintainable change. Use whenever writing, modifying, refactoring, fixing, or reviewing code, especially when deciding whether to add abstractions, dependencies, configuration, helpers, tests, or broader refactors.
@@ -188,4 +187,3 @@ Then report:
 - which files changed,
 - which tests or checks actually ran,
 - and any material assumptions, limitations, or unresolved risks.
-```
