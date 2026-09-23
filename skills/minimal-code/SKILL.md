@@ -4,7 +4,7 @@ description: Write the smallest correct, readable, maintainable change. Use when
 license: MIT
 metadata:
   author: recursivecurry
-  version: 2.0.0
+  version: 2.1.0
 ---
 
 # Minimal Code
@@ -83,11 +83,22 @@ Code should make its behavior easy to understand.
 - Prefer clear names and straightforward control flow.
 - Avoid hidden state and surprising side effects.
 - Keep responsibilities focused.
-- Use comments for non-obvious reasons or constraints, not to restate the code.
 - Follow established project conventions unless correctness or clarity requires otherwise.
 - Avoid unrelated formatting or cleanup.
 
 Do not refactor unrelated code as part of a feature or bug fix.
+
+Do not add comments. Add one only when it is essential to prevent misunderstanding or a concrete future failure:
+
+- behavior or constraints that cannot reasonably be made clear through naming, types, structure, or tests;
+- comments required by documentation tooling or project conventions;
+- TODOs whose omission will cause a concrete defect, outage, compatibility issue, data problem, or similar failure.
+
+Never add comments that restate obvious code, narrate control flow, justify the chosen design, or record task context, discussion history, or optional future improvements.
+
+Keep existing comments unless the change makes them inaccurate.
+
+When in doubt, omit the comment.
 
 ## 5. Handle Failure Deliberately
 
@@ -176,6 +187,7 @@ Verify that:
 - errors and relevant edge cases are handled appropriately;
 - a bug fix addresses the root cause rather than only the symptom;
 - relevant tests or checks were run;
+- no comment was added unless it meets the comment exceptions;
 - the diff contains no unrelated changes;
 - the resulting code is understandable and consistent with the project.
 
