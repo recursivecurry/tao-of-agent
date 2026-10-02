@@ -64,8 +64,6 @@ Do not add:
 - unnecessary indirection,
 - boilerplate or scaffolding without a concrete purpose.
 
-Complexity must be justified by a current requirement.
-
 ## 3. Reuse Without Premature Abstraction
 
 Signal: you are thinking "to avoid duplication", "for reuse", or "just in case". Stop and apply this section first.
@@ -77,8 +75,6 @@ Remove duplication when doing so creates a clearer single source of truth.
 Do not merge code merely because it looks similar. Similar-looking code may represent different concepts or evolve independently.
 
 Extract a helper or abstraction when it makes the current code meaningfully clearer, safer, or easier to maintain — not merely because repetition exists.
-
-Prefer concrete implementations until an abstraction has a real purpose.
 
 ## 4. Keep Behavior Explicit
 
@@ -177,8 +173,6 @@ Avoid:
 - drive-by cleanup,
 - unnecessary formatting changes,
 - behavior changes outside the requested scope.
-
-Minimize diff size only after correctness and maintainability are satisfied.
 
 ## 10. Before Reporting Done
 
