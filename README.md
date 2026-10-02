@@ -12,6 +12,21 @@ format. Each skill is a directory under `skills/` with a `SKILL.md`.
 
 ## Install
 
+### As a Claude Code plugin
+
+The repository is a plugin marketplace that ships one plugin, `tao`, containing every
+skill above. Inside Claude Code:
+
+```text
+/plugin marketplace add recursivecurry/tao-of-agent
+/plugin install tao@tao-of-agent
+```
+
+Plugin skills are namespaced, so they appear as `tao:minimal-code` and
+`tao:git-hygiene`.
+
+### As individual skills
+
 ```bash
 npx skills add recursivecurry/tao-of-agent --skill minimal-code
 ```
