@@ -80,3 +80,17 @@ Lead replies with the answer. No staged openers, empty contrasts, forced triads,
 dramatic closers, or Markdown decoration. Load natural-clear-writing when
 writing or editing prose, docs, commit messages, or UI strings.
 ```
+
+## Evals
+
+`evals/` holds cases for `natural-clear-writing`: an English doc, a Korean doc, a bilingual
+note, UI strings with placeholders, and a commit message. Each case has an LLM grader that
+checks formulaic phrasing is gone and every fact, placeholder, and register survives.
+
+```bash
+claude plugin eval . --judge-model sonnet
+```
+
+The default judge (haiku) misreads the Korean criteria, so pass a stronger judge. The run also
+scores a no-plugin baseline and reports the delta, which is the number to watch when editing
+the skill. Results land in `evals/results/`, which is ignored by git.
