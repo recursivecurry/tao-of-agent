@@ -1,0 +1,14 @@
+{
+  "name": "tao-of-agent",
+  "description": "Skills for disciplined agent coding.",
+  "owner": {
+    "name": "recursivecurry"
+  },
+  "plugins": [
+    {
+      "name": "tao",
+      "source": "./",
+      "description": "Skills for disciplined agent coding: minimal-code and git-hygiene."
+    }
+  ]
+}

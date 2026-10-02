@@ -1,0 +1,10 @@
+{
+  "name": "tao",
+  "description": "Skills for disciplined agent coding: minimal-code and git-hygiene.",
+  "version": "0.1.0",
+  "author": {
+    "name": "recursivecurry"
+  },
+  "repository": "https://github.com/recursivecurry/tao-of-agent",
+  "license": "MIT"
+}
