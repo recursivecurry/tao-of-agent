@@ -33,9 +33,10 @@ meant to hold on every change, so back the skill with a pointer in your project'
 ```markdown
 Follow the minimal-code skill when writing or changing code.
 
-Load it before adding any new abstraction, dependency, or configuration option,
-and again before reporting a change as done.
+Load it before making code changes. Before reporting a change as done, read
+references/done-checklist.md from the skill directory and work through it.
 ```
 
 The skill holds the detail; the pointer is what gets it consulted at the two moments that
-decide whether the change stays small.
+decide whether the change stays small. The completion checklist lives in its own file so the
+second moment costs a short read, not a reload of the whole skill.
