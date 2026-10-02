@@ -4,7 +4,7 @@ description: Write the smallest correct, readable, maintainable change. Use when
 license: MIT
 metadata:
   author: recursivecurry
-  version: 2.1.0
+  version: 2.2.0
 ---
 
 # Minimal Code
@@ -39,6 +39,8 @@ Ask a clarification question only when unresolved ambiguity would materially cha
 
 ## 2. Use the Simplest Sufficient Solution
 
+Signal: you are about to add a file, class, helper, option, or dependency. Stop and walk this list first.
+
 Prefer, in order:
 
 1. No change when the requested behavior already exists.
@@ -62,9 +64,9 @@ Do not add:
 - unnecessary indirection,
 - boilerplate or scaffolding without a concrete purpose.
 
-Complexity must be justified by a current requirement.
-
 ## 3. Reuse Without Premature Abstraction
+
+Signal: you are thinking "to avoid duplication", "for reuse", or "just in case". Stop and apply this section first.
 
 Reuse existing code when it already represents the same concept.
 
@@ -73,8 +75,6 @@ Remove duplication when doing so creates a clearer single source of truth.
 Do not merge code merely because it looks similar. Similar-looking code may represent different concepts or evolve independently.
 
 Extract a helper or abstraction when it makes the current code meaningfully clearer, safer, or easier to maintain — not merely because repetition exists.
-
-Prefer concrete implementations until an abstraction has a real purpose.
 
 ## 4. Keep Behavior Explicit
 
@@ -174,28 +174,6 @@ Avoid:
 - unnecessary formatting changes,
 - behavior changes outside the requested scope.
 
-Minimize diff size only after correctness and maintainability are satisfied.
-
 ## 10. Before Reporting Done
 
-Verify that:
-
-- the requested problem is actually solved;
-- the implementation is no more complex than necessary;
-- existing code was reused where appropriate;
-- no speculative abstraction, dependency, configuration, or feature was added;
-- errors and relevant edge cases are handled appropriately;
-- a bug fix addresses the root cause rather than only the symptom;
-- relevant tests or checks were run;
-- no comment was added unless it meets the comment exceptions;
-- the diff contains no unrelated changes;
-- the resulting code is understandable and consistent with the project.
-
-If one of these checks reveals required work, fix it before reporting completion.
-
-Then report:
-
-- what changed,
-- which files changed,
-- which tests or checks actually ran,
-- and any material assumptions, limitations, or unresolved risks.
+Read [references/done-checklist.md](references/done-checklist.md) and work through it. It is kept separate so it can be re-read at completion time without reloading this file.
