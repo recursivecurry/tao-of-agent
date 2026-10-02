@@ -23,7 +23,7 @@ skill above. Inside Claude Code:
 /plugin install tao@tao-of-agent
 ```
 
-Plugin skills are namespaced, so they appear as `tao:minimal-code`, `tao:git-hygiene`, and so on.
+Plugin skills are namespaced: `tao:minimal-code`, `tao:git-hygiene`, `tao:natural-clear-writing`.
 
 ### With the skills CLI
 
@@ -39,17 +39,19 @@ Or pick one:
 ```bash
 npx skills add recursivecurry/tao-of-agent --skill minimal-code
 npx skills add recursivecurry/tao-of-agent --skill git-hygiene
+npx skills add recursivecurry/tao-of-agent --skill natural-clear-writing
 ```
 
 Add `-g` to install globally, or `-a claude-code` to target a specific agent. Skills installed
-this way keep their plain names (`minimal-code`, `git-hygiene`).
+this way keep their plain names (`minimal-code`, `git-hygiene`, `natural-clear-writing`).
 
 ### Manually
 
-For Claude Code:
+For Claude Code, copy any skill directory, with its `references/` subdirectory if it has one:
 
 ```bash
 cp -r skills/minimal-code ~/.claude/skills/
+cp -r skills/natural-clear-writing ~/.claude/skills/
 ```
 
 ## Making `minimal-code` always apply
