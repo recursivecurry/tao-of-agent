@@ -8,6 +8,7 @@ format. Each skill is a directory under `skills/` with a `SKILL.md`.
 | Skill | Description |
 | --- | --- |
 | [`minimal-code`](skills/minimal-code) | Write the smallest correct, readable, tested change — KISS, YAGNI, DRY, explicit errors, TDD. |
+| [`git-hygiene`](skills/git-hygiene) | Keep Git history easy to review during development and meaningful after merge. |
 
 ## Install
 
