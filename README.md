@@ -25,15 +25,28 @@ skill above. Inside Claude Code:
 Plugin skills are namespaced, so they appear as `tao:minimal-code` and
 `tao:git-hygiene`.
 
-### As individual skills
+### With the skills CLI
+
+The [skills CLI](https://vercel.com/docs/agent-resources/skills) installs skills into any
+supported agent, Claude Code included. Install every skill in the repository:
+
+```bash
+npx skills add recursivecurry/tao-of-agent
+```
+
+Or pick one:
 
 ```bash
 npx skills add recursivecurry/tao-of-agent --skill minimal-code
+npx skills add recursivecurry/tao-of-agent --skill git-hygiene
 ```
 
-Add `-g` to install globally, or `-a claude-code` to target a specific agent.
+Add `-g` to install globally, or `-a claude-code` to target a specific agent. Skills installed
+this way keep their plain names (`minimal-code`, `git-hygiene`).
 
-Manual install for Claude Code:
+### Manually
+
+For Claude Code:
 
 ```bash
 cp -r skills/minimal-code ~/.claude/skills/
