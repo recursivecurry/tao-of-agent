@@ -4,7 +4,7 @@ description: Write the smallest correct, readable, maintainable change. Use when
 license: MIT
 metadata:
   author: recursivecurry
-  version: 2.2.0
+  version: 2.3.0
 ---
 
 # Minimal Code
@@ -174,6 +174,23 @@ Avoid:
 - unnecessary formatting changes,
 - behavior changes outside the requested scope.
 
-## 10. Before Reporting Done
+## 10. Idiomatic Code
+
+Write idiomatic code in every language.
+
+Signal: you are about to write, change, or review TypeScript, Python, Go, or Rust. Load the skill for each language touched first, once per task.
+
+| Language | Skill | Install if missing |
+|---|---|---|
+| TypeScript | `typescript-best-practices` | `npx skills add alleneubank/claude-code@typescript-best-practices` |
+| Python | `python-patterns` | `npx skills add affaan-m/ecc@python-patterns` |
+| Go | `use-modern-go` or `modern-go-guidelines:use-modern-go` | `npx skills add JetBrains/go-modern-guidelines` |
+| Rust | `rust-best-practices` | `npx skills add apollographql/skills@rust-best-practices` |
+
+The project's language version and conventions, and the rules in this skill, take precedence over a language skill's guidance: do not add abstraction only to satisfy a style guideline.
+
+If a skill is not installed, tell the user its name and install command, then continue with the project's conventions and standard tooling. Never claim to have applied a skill you did not load.
+
+## 11. Before Reporting Done
 
 Read [references/done-checklist.md](references/done-checklist.md) and work through it. It is kept separate so it can be re-read at completion time without reloading this file.
