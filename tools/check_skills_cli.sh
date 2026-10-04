@@ -4,16 +4,10 @@
 # The CLI also scans plugins/claude/tao/skills/ and removes duplicates by name. That
 # is observed behavior, not a documented contract, so this catches a change.
 set -euo pipefail
+# shellcheck source=tools/staging.sh
+source "$(dirname "${BASH_SOURCE[0]}")/staging.sh"
 
 readonly SKILLS_SRC="src/skills"
-stage_dir=""
-
-remove_stage_dir() {
-  if [[ -n "$stage_dir" ]]; then
-    rm -rf "$stage_dir"
-  fi
-}
-
 strip_ansi() {
   sed $'s/\x1b\\[[0-9;?]*[a-zA-Z]//g'
 }
@@ -23,9 +17,7 @@ main() {
   cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
   expected="$(find "$SKILLS_SRC" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort)"
-  stage_dir="$(mktemp -d)"
-  trap remove_stage_dir EXIT
-  python3 tools/build.py stage "$stage_dir" >/dev/null
+  stage_distribution
   cd "$stage_dir"
   # `--list` has no JSON output, so read the skill names from the text listing.
   listed="$(npx --yes skills add . --list </dev/null | strip_ansi | sed -n 's/^│    \([a-z0-9-]*\)$/\1/p' | sort)"

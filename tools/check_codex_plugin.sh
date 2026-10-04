@@ -5,23 +5,13 @@
 # staged distribution into a temporary CODEX_HOME. No login is needed: nothing here
 # calls a model.
 set -euo pipefail
+# shellcheck source=tools/staging.sh
+source "$(dirname "${BASH_SOURCE[0]}")/staging.sh"
 
 readonly SKILLS_SRC="src/skills"
 readonly PLUGIN_DIR="plugins/codex/tao"
 readonly MARKETPLACE="tao-of-agent"
 readonly PLUGIN="tao"
-
-codex_home=""
-stage_dir=""
-
-remove_temporary_directories() {
-  if [[ -n "$codex_home" ]]; then
-    rm -rf "$codex_home"
-  fi
-  if [[ -n "$stage_dir" ]]; then
-    rm -rf "$stage_dir"
-  fi
-}
 
 main() {
   local installed expected loaded
@@ -32,10 +22,9 @@ main() {
     exit 1
   fi
 
-  stage_dir="$(mktemp -d)"
-  trap remove_temporary_directories EXIT
-  python3 tools/build.py stage "$stage_dir" >/dev/null
-  codex_home="$(mktemp -d)"
+  stage_distribution
+  codex_home="$stage_dir/codex-home"
+  mkdir "$codex_home"
   export CODEX_HOME="$codex_home"
 
   codex plugin marketplace add "$stage_dir" >/dev/null
