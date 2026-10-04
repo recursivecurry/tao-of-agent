@@ -12,7 +12,12 @@ SKILL = "---\nname: demo\ndescription: Demo skill.\n---\n\nSee [the note](refere
 NOTE = "A note.\n"
 PLUGIN = '{\n  "name": "tao",\n  "version": "0.2.0"\n}\n'
 MARKETPLACE = (
-    '{\n  "name": "m",\n  "plugins": [{"name": "tao", "source": "./plugins/tao"}]\n}\n'
+    '{\n  "name": "m",\n'
+    '  "plugins": [{"name": "tao", "source": "./plugins/claude/tao"}]\n}\n'
+)
+CODEX_MARKETPLACE = (
+    '{\n  "name": "m",\n  "plugins": [{"name": "tao", "source": '
+    '{"source": "local", "path": "./plugins/codex/tao"}}]\n}\n'
 )
 SKILL_SOURCE = "src/skills/demo/SKILL.md.tmpl"
 
@@ -64,8 +69,10 @@ class SourceTreeCase(unittest.TestCase):
         self.root = Path(directory.name)
         write(self.root, SKILL_SOURCE, SKILL)
         write(self.root, "src/skills/demo/references/note.md", NOTE)
-        write(self.root, build.SRC_PLUGIN_MANIFEST, PLUGIN)
-        write(self.root, build.SRC_MARKETPLACE_MANIFEST, MARKETPLACE)
+        write(self.root, build.CLAUDE.source_manifest, PLUGIN)
+        write(self.root, build.CLAUDE.source_marketplace, MARKETPLACE)
+        write(self.root, build.CODEX.source_manifest, PLUGIN)
+        write(self.root, build.CODEX.source_marketplace, CODEX_MARKETPLACE)
 
     def build(self) -> str:
         code, stdout, _ = run(build.build, self.root)
@@ -81,6 +88,7 @@ class RenderTest(unittest.TestCase):
         text = "a\n<!-- target:claude -->\nc\n<!-- /target -->\n<!-- target:generic -->\ng\n<!-- /target -->\nz\n"
         self.assertEqual(self.render(text, "claude"), "a\nc\nz\n")
         self.assertEqual(self.render(text, "generic"), "a\ng\nz\n")
+        self.assertEqual(self.render(text, "codex"), "a\nz\n")
 
     def test_indented_markers_are_removed_with_their_newline(self) -> None:
         text = "- item\n  <!-- target:claude -->\n  nested\n\t<!-- /target -->\nend"
@@ -133,8 +141,8 @@ class RenderTest(unittest.TestCase):
             ),
             "stray close": ("a\n<!-- /target -->\n", r"^t\.tmpl:2: closing marker"),
             "unknown target": (
-                "<!-- target:codex -->\n<!-- /target -->\n",
-                r"^t\.tmpl:1: unknown target 'codex'",
+                "<!-- target:cursor -->\n<!-- /target -->\n",
+                r"^t\.tmpl:1: unknown target 'cursor'",
             ),
         }
         for name, (text, message) in cases.items():
@@ -146,7 +154,7 @@ class RenderTest(unittest.TestCase):
 
 
 class BuildTest(SourceTreeCase):
-    def test_writes_both_distributions(self) -> None:
+    def test_writes_every_distribution(self) -> None:
         self.build()
         generated = {
             path: content
@@ -159,10 +167,14 @@ class BuildTest(SourceTreeCase):
             {
                 "skills/demo/SKILL.md": skill,
                 "skills/demo/references/note.md": NOTE.encode(),
-                "plugins/tao/skills/demo/SKILL.md": skill,
-                "plugins/tao/skills/demo/references/note.md": NOTE.encode(),
-                "plugins/tao/.claude-plugin/plugin.json": PLUGIN.encode(),
+                "plugins/claude/tao/skills/demo/SKILL.md": skill,
+                "plugins/claude/tao/skills/demo/references/note.md": NOTE.encode(),
+                "plugins/claude/tao/.claude-plugin/plugin.json": PLUGIN.encode(),
                 ".claude-plugin/marketplace.json": MARKETPLACE.encode(),
+                "plugins/codex/tao/skills/demo/SKILL.md": skill,
+                "plugins/codex/tao/skills/demo/references/note.md": NOTE.encode(),
+                "plugins/codex/tao/.codex-plugin/plugin.json": PLUGIN.encode(),
+                ".agents/plugins/marketplace.json": CODEX_MARKETPLACE.encode(),
             },
         )
 
@@ -170,10 +182,42 @@ class BuildTest(SourceTreeCase):
         template = SKILL + "<!-- target:claude -->\nClaude only.\n<!-- /target -->\n"
         write(self.root, SKILL_SOURCE, template)
         self.build()
-        claude = (self.root / "plugins/tao/skills/demo/SKILL.md").read_text()
+        claude = (self.root / "plugins/claude/tao/skills/demo/SKILL.md").read_text()
+        codex = (self.root / "plugins/codex/tao/skills/demo/SKILL.md").read_text()
         generic = (self.root / "skills/demo/SKILL.md").read_text()
         self.assertIn("Claude only.", claude)
+        self.assertNotIn("Claude only.", codex)
         self.assertNotIn("Claude only.", generic)
+
+    def test_shared_plugin_files_go_to_both_plugins(self) -> None:
+        template = "all\n<!-- target:codex -->\ncodex\n<!-- /target -->\n"
+        write(self.root, "src/plugin/hooks/context.md.tmpl", template)
+        write(self.root, "src/plugin/hooks/run.sh", "echo\n", executable=True)
+        self.build()
+        claude, codex = (
+            self.root / "plugins/claude/tao",
+            self.root / "plugins/codex/tao",
+        )
+        self.assertEqual((claude / "hooks/context.md").read_text(), "all\n")
+        self.assertEqual((codex / "hooks/context.md").read_text(), "all\ncodex\n")
+        self.assertTrue(os.access(claude / "hooks/run.sh", os.X_OK))
+        self.assertTrue(os.access(codex / "hooks/run.sh", os.X_OK))
+        self.assertFalse((self.root / "skills/hooks").exists())
+
+    def test_agent_files_go_to_their_plugin_only(self) -> None:
+        write(self.root, "src/claude/hooks/hooks.json", "{}\n")
+        write(self.root, "src/codex/agents/reviewer.toml", "x\n")
+        self.build()
+        claude, codex = (
+            self.root / "plugins/claude/tao",
+            self.root / "plugins/codex/tao",
+        )
+        self.assertTrue((claude / "hooks/hooks.json").exists())
+        self.assertFalse((codex / "hooks").exists())
+        self.assertTrue((codex / "agents/reviewer.toml").exists())
+        self.assertFalse((claude / "agents").exists())
+        self.assertFalse((claude / "plugin.json").exists())
+        self.assertFalse((codex / "marketplace.json").exists())
 
     def test_other_templates_lose_the_suffix_and_get_no_notice(self) -> None:
         write(self.root, "src/skills/demo/references/extra.md.tmpl", "Extra.\n")
@@ -185,7 +229,7 @@ class BuildTest(SourceTreeCase):
         binary = b"\x00\xff\r\n<!-- target:claude -->\n"
         write(self.root, "src/skills/demo/assets/blob.bin", binary)
         self.build()
-        blob = self.root / "plugins/tao/skills/demo/assets/blob.bin"
+        blob = self.root / "plugins/codex/tao/skills/demo/assets/blob.bin"
         self.assertEqual(blob.read_bytes(), binary)
 
     def test_writes_lf_line_endings_for_templates(self) -> None:
@@ -203,12 +247,16 @@ class BuildTest(SourceTreeCase):
         write(self.root, "skills/old/SKILL.md", "old\n")
         write(self.root, "plugins/tao/evals/case/prompt.md", "p\n")
         write(self.root, ".claude-plugin/plugin.json", PLUGIN)
+        write(self.root, ".agents/plugins/old.json", "{}\n")
         write(self.root, "evals/case/prompt.md", "kept\n")
+        write(self.root, ".agents/skills/installed/SKILL.md", "kept\n")
         stdout = self.build()
         self.assertFalse((self.root / "skills/old").exists())
-        self.assertFalse((self.root / "plugins/tao/evals").exists())
+        self.assertFalse((self.root / "plugins/tao").exists())
         self.assertFalse((self.root / ".claude-plugin/plugin.json").exists())
+        self.assertFalse((self.root / ".agents/plugins/old.json").exists())
         self.assertTrue((self.root / "evals/case/prompt.md").exists())
+        self.assertTrue((self.root / ".agents/skills/installed/SKILL.md").exists())
         self.assertIn("removed skills/old/SKILL.md", stdout)
 
     def test_second_build_changes_nothing(self) -> None:
@@ -218,7 +266,7 @@ class BuildTest(SourceTreeCase):
         self.assertEqual(snapshot(self.root), first)
 
     def test_rejects_invalid_json_manifest(self) -> None:
-        write(self.root, build.SRC_PLUGIN_MANIFEST, '{\n  "name": \n}\n')
+        write(self.root, build.CLAUDE.source_manifest, '{\n  "name": \n}\n')
         with self.assertRaisesRegex(build.BuildError, r"^src/claude/plugin\.json:3: "):
             build.build(self.root)
 
@@ -245,12 +293,12 @@ class CheckTest(SourceTreeCase):
         self.assertIn("-edited by hand", stdout)
 
     def test_fails_on_extra_missing_and_mode_changes(self) -> None:
-        write(self.root, "plugins/tao/extra.md", "extra\n")
+        write(self.root, "plugins/codex/tao/extra.md", "extra\n")
         (self.root / "skills/demo/references/note.md").unlink()
         (self.root / ".claude-plugin/marketplace.json").chmod(0o755)
         code, stdout, _ = run(build.check, self.root)
         self.assertEqual(code, 1)
-        self.assertIn("not generated from src: plugins/tao/extra.md", stdout)
+        self.assertIn("not generated from src: plugins/codex/tao/extra.md", stdout)
         self.assertIn("missing: skills/demo/references/note.md", stdout)
         self.assertIn("wrong executable bit: .claude-plugin/marketplace.json", stdout)
 
@@ -342,14 +390,57 @@ class LintTest(SourceTreeCase):
         )
 
     def test_marketplace_must_list_one_plugin(self) -> None:
-        write(self.root, build.SRC_MARKETPLACE_MANIFEST, '{"plugins": []}')
-        self.assert_violation("must list exactly one plugin")
+        write(self.root, build.CODEX.source_marketplace, '{"plugins": []}')
+        self.assert_violation(
+            "src/codex/marketplace.json: must list exactly one plugin"
+        )
 
     def test_marketplace_source_and_name_must_match(self) -> None:
         marketplace = '{"plugins": [{"name": "other", "source": "./"}]}'
-        write(self.root, build.SRC_MARKETPLACE_MANIFEST, marketplace)
-        self.assert_violation('plugin source must be "./plugins/tao"')
+        write(self.root, build.CLAUDE.source_marketplace, marketplace)
+        write(self.root, build.CODEX.source_marketplace, marketplace)
+        self.assert_violation('plugin source must be "./plugins/claude/tao"')
         self.assert_violation("plugin name must match src/claude/plugin.json ('tao')")
+        self.assert_violation(
+            'plugin source must be {"source": "local", "path": "./plugins/codex/tao"}'
+        )
+        self.assert_violation("plugin name must match src/codex/plugin.json ('tao')")
+
+    def test_plugin_versions_must_be_equal(self) -> None:
+        write(self.root, build.CODEX.source_manifest, PLUGIN.replace("0.2.0", "0.3.0"))
+        self.assert_violation(
+            "src/codex/plugin.json: version '0.3.0' must equal '0.2.0' "
+            "in src/claude/plugin.json"
+        )
+
+    def test_plugin_json_files_must_parse(self) -> None:
+        write(self.root, "src/plugin/hooks/shared.json", "[]\n")
+        write(self.root, "src/codex/hooks/hooks.json", '{\n  "hooks": \n}\n')
+        self.assert_violation("src/plugin/hooks/shared.json:1: expected a JSON object")
+        self.assert_violation("src/codex/hooks/hooks.json:3: ")
+
+    def test_plugin_templates_need_well_formed_markers(self) -> None:
+        write(self.root, "src/plugin/hooks/context.md.tmpl", "<!-- /target -->\n")
+        self.assert_violation("src/plugin/hooks/context.md.tmpl:1: closing marker")
+
+    def test_agent_files_must_not_name_the_other_agent(self) -> None:
+        write(self.root, "src/claude/hooks/hooks.json", '{"c": "${PLUGIN_ROOT}/x"}\n')
+        write(
+            self.root, "src/codex/hooks/hooks.json", '{"c": "${CLAUDE_PLUGIN_ROOT}"}\n'
+        )
+        self.assert_violation(
+            "src/claude/hooks/hooks.json:1: '${PLUGIN_ROOT}' is not allowed in src/claude"
+        )
+        self.assert_violation(
+            "src/codex/hooks/hooks.json:1: 'CLAUDE_' is not allowed in src/codex"
+        )
+
+    def test_each_agent_may_name_its_own_variables(self) -> None:
+        write(
+            self.root, "src/claude/hooks/hooks.json", '{"c": "${CLAUDE_PLUGIN_ROOT}"}\n'
+        )
+        write(self.root, "src/codex/hooks/hooks.json", '{"c": "${PLUGIN_ROOT}"}\n')
+        self.assertEqual(build.lint_violations(self.root), [])
 
 
 class VersionTest(unittest.TestCase):
@@ -373,7 +464,8 @@ class GitCase(SourceTreeCase):
         git(self.root, "init", "-q", "-b", "main")
 
     def set_version(self, version: str) -> None:
-        write(self.root, build.SRC_PLUGIN_MANIFEST, PLUGIN.replace("0.2.0", version))
+        for plugin in build.PLUGINS:
+            write(self.root, plugin.source_manifest, PLUGIN.replace("0.2.0", version))
 
 
 class VersionCheckTest(GitCase):
@@ -413,6 +505,14 @@ class VersionCheckTest(GitCase):
         commit_all(self.root, "change")
         self.assertEqual(build.version_check(self.root, "base"), 0)
 
+    def test_each_plugin_is_checked_on_its_own(self) -> None:
+        write(self.root, "src/codex/hooks/hooks.json", "{}\n")
+        self.build()
+        commit_all(self.root, "codex only")
+        message = r"^plugins/codex/tao/\.codex-plugin/plugin\.json: version 0\.2\.0"
+        with self.assertRaisesRegex(build.BuildError, message):
+            build.version_check(self.root, "base")
+
     def test_reads_the_working_commit_not_the_working_tree(self) -> None:
         self.change_plugin()
         self.build()
@@ -425,7 +525,7 @@ class VersionCheckTest(GitCase):
 
 class VersionCheckBaseLookupTest(GitCase):
     def test_falls_back_to_the_root_manifest_of_the_old_layout(self) -> None:
-        write(self.root, build.LEGACY_PLUGIN_MANIFEST, PLUGIN)
+        write(self.root, build.CLAUDE.legacy_manifests[0], PLUGIN)
         commit_all(self.root, "old layout")
         git(self.root, "tag", "base")
         self.build()
@@ -454,9 +554,9 @@ class SummaryTest(GitCase):
             self.summary(),
             "## Build summary\n\n"
             "Plugin version: 0.2.0 (unchanged)\n\n"
-            "| Skill | Generic | Claude |\n"
-            "|---|---|---|\n"
-            "| demo | — | — |\n\n"
+            "| Skill | Generic | Claude | Codex |\n"
+            "|---|---|---|---|\n"
+            "| demo | — | — | — |\n\n"
             "Other changes: none\n",
         )
 
@@ -482,12 +582,13 @@ class SummaryTest(GitCase):
             self.summary(),
             "## Build summary\n\n"
             "Plugin version: 0.2.0 → 0.3.0\n\n"
-            "| Skill | Generic | Claude |\n"
-            "|---|---|---|\n"
-            "| added | changed | changed |\n"
-            "| demo | — | changed |\n"
-            "| gone | changed | changed |\n\n"
-            "Other changes: plugins/tao/.claude-plugin/plugin.json\n",
+            "| Skill | Generic | Claude | Codex |\n"
+            "|---|---|---|---|\n"
+            "| added | changed | changed | changed |\n"
+            "| demo | — | changed | — |\n"
+            "| gone | changed | changed | changed |\n\n"
+            "Other changes: plugins/claude/tao/.claude-plugin/plugin.json, "
+            "plugins/codex/tao/.codex-plugin/plugin.json\n",
         )
 
     def test_reports_a_new_plugin_when_head_has_no_manifest(self) -> None:

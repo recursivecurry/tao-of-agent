@@ -1,7 +1,7 @@
 #!/bin/bash
 # Check that the skills CLI lists each skill in src/skills exactly once.
 #
-# The CLI also scans plugins/tao/skills/ and removes duplicates by name. That
+# The CLI also scans plugins/claude/tao/skills/ and removes duplicates by name. That
 # is observed behavior, not a documented contract, so this catches a change.
 set -euo pipefail
 

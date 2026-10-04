@@ -48,5 +48,6 @@ jobs:
           body-path: ${{ runner.temp }}/summary.md
           add-paths: |
             skills/**
-            plugins/tao/**
+            plugins/**
             .claude-plugin/**
+            .agents/plugins/**

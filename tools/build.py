@@ -1,4 +1,4 @@
-"""Generate the generic skills and the Claude Code plugin from src/."""
+"""Generate the generic skills and the Claude Code and Codex plugins from src/."""
 
 import argparse
 import difflib
@@ -14,17 +14,58 @@ from dataclasses import dataclass
 from pathlib import Path, PurePath
 
 SRC_SKILLS = "src/skills"
-SRC_PLUGIN_MANIFEST = "src/claude/plugin.json"
-SRC_MARKETPLACE_MANIFEST = "src/claude/marketplace.json"
+SRC_SHARED_PLUGIN_FILES = "src/plugin"
 
-PLUGIN_ROOT = "plugins/tao"
-PLUGIN_MANIFEST = f"{PLUGIN_ROOT}/.claude-plugin/plugin.json"
-MARKETPLACE_MANIFEST = ".claude-plugin/marketplace.json"
-LEGACY_PLUGIN_MANIFEST = ".claude-plugin/plugin.json"
-MARKETPLACE_PLUGIN_SOURCE = f"./{PLUGIN_ROOT}"
 
-SKILL_ROOTS = {"generic": "skills", "claude": f"{PLUGIN_ROOT}/skills"}
-OWNED_ROOTS = ("skills", PLUGIN_ROOT, ".claude-plugin")
+@dataclass(frozen=True)
+class Plugin:
+    target: str
+    source: str
+    root: str
+    manifest: str
+    marketplace: str
+    marketplace_source: str | dict[str, str]
+    legacy_manifests: tuple[str, ...]
+    forbidden: tuple[str, ...]
+
+    @property
+    def source_manifest(self) -> str:
+        return f"{self.source}/plugin.json"
+
+    @property
+    def source_marketplace(self) -> str:
+        return f"{self.source}/marketplace.json"
+
+
+CLAUDE = Plugin(
+    target="claude",
+    source="src/claude",
+    root="plugins/claude/tao",
+    manifest="plugins/claude/tao/.claude-plugin/plugin.json",
+    marketplace=".claude-plugin/marketplace.json",
+    marketplace_source="./plugins/claude/tao",
+    legacy_manifests=(".claude-plugin/plugin.json",),
+    forbidden=("${PLUGIN_ROOT}", "CODEX_", ".codex"),
+)
+CODEX = Plugin(
+    target="codex",
+    source="src/codex",
+    root="plugins/codex/tao",
+    manifest="plugins/codex/tao/.codex-plugin/plugin.json",
+    marketplace=".agents/plugins/marketplace.json",
+    marketplace_source={"source": "local", "path": "./plugins/codex/tao"},
+    legacy_manifests=(),
+    forbidden=("CLAUDE_", ".claude"),
+)
+PLUGINS = (CLAUDE, CODEX)
+
+SKILL_ROOTS = {
+    "generic": "skills",
+    **{plugin.target: f"{plugin.root}/skills" for plugin in PLUGINS},
+}
+# .agents/skills is where the skills CLI installs project skills, so only
+# .agents/plugins is owned.
+OWNED_ROOTS = ("skills", "plugins", ".claude-plugin", ".agents/plugins")
 
 TEMPLATE_SUFFIX = ".tmpl"
 SKILL_TEMPLATE = "SKILL.md.tmpl"
@@ -130,27 +171,74 @@ def output_name(relative: PurePath) -> str:
     return stripped.as_posix()
 
 
-def skill_outputs(root: Path, skill_dir: Path) -> Iterator[tuple[str, Output]]:
-    for source in source_files(skill_dir):
+def tree_outputs(
+    root: Path,
+    directory: Path,
+    sources: list[Path],
+    destinations: dict[str, str],
+    notice_for: Path | None = None,
+) -> Iterator[tuple[str, Output]]:
+    """Yield each source once per target, placed under that target's destination."""
+    for source in sources:
         path = source.relative_to(root).as_posix()
-        name = output_name(source.relative_to(skill_dir))
+        name = output_name(source.relative_to(directory))
         executable = is_executable(source)
-        for target, skill_root in SKILL_ROOTS.items():
+        for target, destination in destinations.items():
             if is_template(source):
-                notice = source == skill_dir / SKILL_TEMPLATE
                 content = render_template(
-                    read_text(root, path), target, path, notice=notice
+                    read_text(root, path), target, path, notice=source == notice_for
                 )
             else:
                 content = source.read_bytes()
-            yield f"{skill_root}/{skill_dir.name}/{name}", Output(content, executable)
+            yield f"{destination}/{name}", Output(content, executable)
+
+
+def skill_outputs(root: Path, skill_dir: Path) -> Iterator[tuple[str, Output]]:
+    destinations = {
+        target: f"{skill_root}/{skill_dir.name}"
+        for target, skill_root in SKILL_ROOTS.items()
+    }
+    return tree_outputs(
+        root,
+        skill_dir,
+        source_files(skill_dir),
+        destinations,
+        notice_for=skill_dir / SKILL_TEMPLATE,
+    )
+
+
+def agent_files(root: Path, plugin: Plugin) -> list[Path]:
+    """Return the files in the plugin's source directory other than its manifests."""
+    manifests = {root / plugin.source_manifest, root / plugin.source_marketplace}
+    return [
+        source
+        for source in source_files(root / plugin.source)
+        if source not in manifests
+    ]
+
+
+def plugin_file_outputs(root: Path) -> Iterator[tuple[str, Output]]:
+    shared = root / SRC_SHARED_PLUGIN_FILES
+    plugin_roots = {plugin.target: plugin.root for plugin in PLUGINS}
+    yield from tree_outputs(root, shared, source_files(shared), plugin_roots)
+    for plugin in PLUGINS:
+        yield from tree_outputs(
+            root,
+            root / plugin.source,
+            agent_files(root, plugin),
+            {plugin.target: plugin.root},
+        )
 
 
 def manifest_outputs(root: Path) -> Iterator[tuple[str, Output]]:
-    manifests = (
-        (SRC_PLUGIN_MANIFEST, PLUGIN_MANIFEST),
-        (SRC_MARKETPLACE_MANIFEST, MARKETPLACE_MANIFEST),
-    )
+    manifests = [
+        pair
+        for plugin in PLUGINS
+        for pair in (
+            (plugin.source_manifest, plugin.manifest),
+            (plugin.source_marketplace, plugin.marketplace),
+        )
+    ]
     for source, output in manifests:
         parse_json_object(read_text(root, source), source)
         yield output, Output((root / source).read_bytes(), executable=False)
@@ -163,7 +251,8 @@ def expected_outputs(root: Path) -> dict[str, Output]:
         for skill_dir in skill_dirs(root)
         for output in skill_outputs(root, skill_dir)
     ]
-    for path, output in [*produced, *manifest_outputs(root)]:
+    produced += [*plugin_file_outputs(root), *manifest_outputs(root)]
+    for path, output in produced:
         if path in outputs:
             raise BuildError(path, "two source files produce this output")
         outputs[path] = output
@@ -342,36 +431,85 @@ def lint_skill(root: Path, skill_dir: Path) -> Iterator[BuildError]:
             yield from lint_template(path, text, skill)
 
 
-def lint_manifests(root: Path) -> Iterator[BuildError]:
-    try:
-        plugin = parse_json_object(
-            read_text(root, SRC_PLUGIN_MANIFEST), SRC_PLUGIN_MANIFEST
-        )
-        marketplace = parse_json_object(
-            read_text(root, SRC_MARKETPLACE_MANIFEST), SRC_MARKETPLACE_MANIFEST
-        )
-    except BuildError as error:
-        yield error
-        return
+def lint_marketplace(
+    plugin: Plugin, manifest: dict, marketplace: dict
+) -> Iterator[BuildError]:
     plugins = marketplace.get("plugins")
     if (
         not isinstance(plugins, list)
         or len(plugins) != 1
         or not isinstance(plugins[0], dict)
     ):
-        yield BuildError(SRC_MARKETPLACE_MANIFEST, "must list exactly one plugin")
+        yield BuildError(plugin.source_marketplace, "must list exactly one plugin")
         return
     entry = plugins[0]
-    if entry.get("source") != MARKETPLACE_PLUGIN_SOURCE:
+    if entry.get("source") != plugin.marketplace_source:
         yield BuildError(
-            SRC_MARKETPLACE_MANIFEST,
-            f'plugin source must be "{MARKETPLACE_PLUGIN_SOURCE}"',
+            plugin.source_marketplace,
+            f"plugin source must be {json.dumps(plugin.marketplace_source)}",
         )
-    if entry.get("name") != plugin.get("name"):
+    if entry.get("name") != manifest.get("name"):
         message = (
-            f"plugin name must match {SRC_PLUGIN_MANIFEST} ('{plugin.get('name')}')"
+            f"plugin name must match {plugin.source_manifest} "
+            f"('{manifest.get('name')}')"
         )
-        yield BuildError(SRC_MARKETPLACE_MANIFEST, message)
+        yield BuildError(plugin.source_marketplace, message)
+
+
+def lint_manifests(root: Path) -> Iterator[BuildError]:
+    versions = {}
+    for plugin in PLUGINS:
+        try:
+            manifest = parse_json_object(
+                read_text(root, plugin.source_manifest), plugin.source_manifest
+            )
+            marketplace = parse_json_object(
+                read_text(root, plugin.source_marketplace), plugin.source_marketplace
+            )
+        except BuildError as error:
+            yield error
+            continue
+        versions[plugin.target] = manifest.get("version")
+        yield from lint_marketplace(plugin, manifest, marketplace)
+    if len(set(versions.values())) > 1:
+        message = (
+            f"version {versions[CODEX.target]!r} must equal "
+            f"{versions[CLAUDE.target]!r} in {CLAUDE.source_manifest}"
+        )
+        yield BuildError(CODEX.source_manifest, message)
+
+
+def lint_plugin_file(
+    root: Path, source: Path, directory: str, forbidden: tuple[str, ...]
+) -> Iterator[BuildError]:
+    path = source.relative_to(root).as_posix()
+    try:
+        text = read_text(root, path)
+    except BuildError as error:
+        if is_template(source):
+            yield error
+        return
+    for number, line in enumerate(io.StringIO(text), start=1):
+        for term in forbidden:
+            if term in line:
+                yield BuildError(
+                    path, f"'{term}' is not allowed in {directory}", number
+                )
+    if is_template(source):
+        yield from lint_template(path, text, None)
+    elif source.suffix == ".json":
+        try:
+            parse_json_object(text, path)
+        except BuildError as error:
+            yield error
+
+
+def lint_plugin_files(root: Path) -> Iterator[BuildError]:
+    directories: list[tuple[str, tuple[str, ...]]] = [(SRC_SHARED_PLUGIN_FILES, ())]
+    directories += [(plugin.source, plugin.forbidden) for plugin in PLUGINS]
+    for directory, forbidden in directories:
+        for source in source_files(root / directory):
+            yield from lint_plugin_file(root, source, directory, forbidden)
 
 
 def lint_violations(root: Path) -> list[str]:
@@ -381,7 +519,8 @@ def lint_violations(root: Path) -> list[str]:
         for violation in lint_skill(root, skill_dir)
     ]
     violations += lint_manifests(root)
-    # Both targets report the same violation when a template has no target blocks.
+    violations += lint_plugin_files(root)
+    # Every target reports the same violation when a template has no target blocks.
     return list(dict.fromkeys(str(violation) for violation in violations))
 
 
@@ -416,30 +555,35 @@ def version_key(version: str) -> tuple[int, ...]:
     return tuple(int(part) for part in version.split("."))
 
 
-def plugin_version_at(root: Path, ref: str) -> str | None:
-    for path in (PLUGIN_MANIFEST, LEGACY_PLUGIN_MANIFEST):
+def plugin_version_at(root: Path, ref: str, plugin: Plugin) -> str | None:
+    for path in (plugin.manifest, *plugin.legacy_manifests):
         text = file_at(root, ref, path)
         if text is not None:
             return manifest_version(text, f"{ref}:{path}")
     return None
 
 
-def version_check(root: Path, base: str) -> int:
-    if not git(root, "diff", "--name-only", base, "HEAD", "--", PLUGIN_ROOT):
-        return 0
-    base_version = plugin_version_at(root, base)
+def check_plugin_version(root: Path, base: str, plugin: Plugin) -> None:
+    if not git(root, "diff", "--name-only", base, "HEAD", "--", plugin.root):
+        return
+    base_version = plugin_version_at(root, base, plugin)
     if base_version is None:
-        return 0
-    head_manifest = file_at(root, "HEAD", PLUGIN_MANIFEST)
+        return
+    head_manifest = file_at(root, "HEAD", plugin.manifest)
     if head_manifest is None:
-        raise BuildError(PLUGIN_MANIFEST, "missing at HEAD")
-    head_version = manifest_version(head_manifest, PLUGIN_MANIFEST)
+        raise BuildError(plugin.manifest, "missing at HEAD")
+    head_version = manifest_version(head_manifest, plugin.manifest)
     if version_key(head_version) <= version_key(base_version):
         message = (
             f"version {head_version} must be greater than {base_version} "
-            f"because {PLUGIN_ROOT}/ changed; bump it in {SRC_PLUGIN_MANIFEST}"
+            f"because {plugin.root}/ changed; bump it in {plugin.source_manifest}"
         )
-        raise BuildError(PLUGIN_MANIFEST, message)
+        raise BuildError(plugin.manifest, message)
+
+
+def version_check(root: Path, base: str) -> int:
+    for plugin in PLUGINS:
+        check_plugin_version(root, base, plugin)
     return 0
 
 
@@ -468,8 +612,9 @@ def skill_of(path: str) -> tuple[str, str] | None:
 
 
 def describe_version_change(root: Path) -> str:
-    current = manifest_version(read_text(root, PLUGIN_MANIFEST), PLUGIN_MANIFEST)
-    previous = plugin_version_at(root, "HEAD")
+    # Lint keeps the Codex version equal to this one.
+    current = manifest_version(read_text(root, CLAUDE.manifest), CLAUDE.manifest)
+    previous = plugin_version_at(root, "HEAD", CLAUDE)
     if previous is None:
         return f"{current} (new)"
     if previous == current:
@@ -515,7 +660,7 @@ def parse_arguments(argv: list[str] | None) -> argparse.Namespace:
         "summary", help="print a Markdown summary of generated changes since HEAD"
     )
     version_parser = commands.add_parser(
-        "version-check", help="require a plugin version bump when the plugin changed"
+        "version-check", help="require a plugin version bump when a plugin changed"
     )
     version_parser.add_argument(
         "--base", required=True, help="git ref to compare HEAD against"

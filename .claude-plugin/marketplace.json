@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "tao",
-      "source": "./plugins/tao",
+      "source": "./plugins/claude/tao",
       "description": "Skills for disciplined agent work: minimal code, clean Git history, natural writing."
     }
   ]
