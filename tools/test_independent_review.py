@@ -285,10 +285,11 @@ class PrepareReviewTest(unittest.TestCase):
             patch.object(
                 prepare_review.subprocess, "run", side_effect=simulate_foreign_owner
             ),
-            self.assertRaises(subprocess.CalledProcessError) as raised,
+            patch.object(prepare_review.tempfile, "mkdtemp") as make_snapshot,
+            self.assertRaises(subprocess.CalledProcessError),
         ):
             prepare_review.prepare_review(self.repo, self.base, self.head)
-        self.assertIn("dubious ownership", raised.exception.stderr)
+        make_snapshot.assert_not_called()
 
     def test_rejects_git_versions_without_global_config_isolation(self) -> None:
         real_git = prepare_review.git
