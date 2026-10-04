@@ -26,6 +26,8 @@ main() {
     exit 1
   fi
 
+  python3 tools/build.py build
+
   codex_home="$(mktemp -d)"
   trap remove_codex_home EXIT
   export CODEX_HOME="$codex_home"
