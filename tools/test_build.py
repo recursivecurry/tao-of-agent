@@ -69,6 +69,7 @@ class SourceTreeCase(unittest.TestCase):
         self.root = Path(directory.name)
         write(self.root, SKILL_SOURCE, SKILL)
         write(self.root, "src/skills/demo/references/note.md", NOTE)
+        write(self.root, build.README, "[`demo`](skills/demo)\n")
         write(self.root, build.CLAUDE.source_manifest, PLUGIN)
         write(self.root, build.CLAUDE.source_marketplace, MARKETPLACE)
         write(self.root, build.CODEX.source_manifest, PLUGIN)
@@ -159,7 +160,7 @@ class BuildTest(SourceTreeCase):
         generated = {
             path: content
             for path, (content, _, _) in snapshot(self.root).items()
-            if not path.startswith("src/")
+            if not path.startswith("src/") and path != build.README
         }
         skill = build.render_template(SKILL, "generic", SKILL_SOURCE, notice=True)
         self.assertEqual(
@@ -382,6 +383,35 @@ class LintTest(SourceTreeCase):
                 self.assert_violation(
                     f"src/skills/demo/references/note.md:1: '{forbidden}' is not allowed"
                 )
+
+    def test_agent_specific_terms_need_a_target_block(self) -> None:
+        for term in build.AGENT_SPECIFIC_IN_SKILLS:
+            with self.subTest(term):
+                write(self.root, SKILL_SOURCE, SKILL + f"See {term}x.\n")
+                self.assert_violation(
+                    f"{SKILL_SOURCE}:7: '{term}' is only allowed inside a target block"
+                )
+
+    def test_agent_specific_terms_are_checked_in_copied_files(self) -> None:
+        write(self.root, "src/skills/demo/references/note.md", "Load tao:demo.\n")
+        self.assert_violation(
+            "src/skills/demo/references/note.md:1: 'tao:' is only allowed"
+        )
+
+    def test_agent_specific_terms_are_allowed_in_a_target_block(self) -> None:
+        block = (
+            "<!-- target:claude -->\nLoad tao:demo. See CLAUDE.md.\n<!-- /target -->\n"
+        )
+        write(self.root, SKILL_SOURCE, SKILL + block)
+        self.assertEqual(build.lint_violations(self.root), [])
+
+    def test_readme_must_link_every_skill(self) -> None:
+        write(self.root, build.README, "No skills listed.\n")
+        self.assert_violation("README.md: does not link to skills/demo")
+
+    def test_readme_must_exist(self) -> None:
+        (self.root / build.README).unlink()
+        self.assert_violation("README.md: missing")
 
     def test_malformed_markers_are_reported(self) -> None:
         write(self.root, SKILL_SOURCE, SKILL + "<!-- target:claude -->\n")

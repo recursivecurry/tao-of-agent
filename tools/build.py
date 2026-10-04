@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePath
 
 SRC_SKILLS = "src/skills"
+README = "README.md"
 SRC_SHARED_PLUGIN_FILES = "src/plugin"
 
 
@@ -80,6 +81,9 @@ SKILL_NAME = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 VERSION = re.compile(r"\d+\.\d+\.\d+")
 
 FORBIDDEN_IN_SKILLS = ("](../", "](/", ".claude/", ".agents/", ".codex/", "~/.")
+# A skill is `tao:<name>` only in a plugin, and each agent reads its own
+# instruction file, so these belong in a target block.
+AGENT_SPECIFIC_IN_SKILLS = ("tao:", "CLAUDE.md", "AGENTS.md")
 ESCAPING_LINK_PREFIXES = ("/", "../")
 EXTERNAL_LINK_PREFIXES = ("#", "mailto:")
 
@@ -408,6 +412,26 @@ def lint_text(
                 )
 
 
+def lint_shared_lines(path: str, text: str, *, template: bool) -> Iterator[BuildError]:
+    """Check the lines that every target receives."""
+    lines = list(enumerate(io.StringIO(text), start=1))
+    if template:
+        try:
+            renderings = [
+                set(render_lines(text, target, path)) for target in SKILL_ROOTS
+            ]
+        except BuildError:
+            # lint_template reports the malformed marker.
+            return
+        lines = sorted(set.intersection(*renderings))
+    for number, line in lines:
+        for term in AGENT_SPECIFIC_IN_SKILLS:
+            if term in line:
+                yield BuildError(
+                    path, f"'{term}' is only allowed inside a target block", number
+                )
+
+
 def lint_skill(root: Path, skill_dir: Path) -> Iterator[BuildError]:
     sources = source_files(skill_dir)
     skill_files = {output_name(source.relative_to(skill_dir)) for source in sources}
@@ -426,6 +450,7 @@ def lint_skill(root: Path, skill_dir: Path) -> Iterator[BuildError]:
             continue
         directory = source.parent.relative_to(skill_dir).as_posix()
         yield from lint_text(path, text, directory, skill_files)
+        yield from lint_shared_lines(path, text, template=is_template(source))
         if is_template(source):
             skill = skill_dir.name if source == skill_template else None
             yield from lint_template(path, text, skill)
@@ -512,6 +537,18 @@ def lint_plugin_files(root: Path) -> Iterator[BuildError]:
             yield from lint_plugin_file(root, source, directory, forbidden)
 
 
+def lint_readme(root: Path) -> Iterator[BuildError]:
+    try:
+        readme = read_text(root, README)
+    except OSError:
+        yield BuildError(README, "missing")
+        return
+    for skill_dir in skill_dirs(root):
+        link = f"(skills/{skill_dir.name})"
+        if link not in readme:
+            yield BuildError(README, f"does not link to {link[1:-1]}")
+
+
 def lint_violations(root: Path) -> list[str]:
     violations = [
         violation
@@ -520,6 +557,7 @@ def lint_violations(root: Path) -> list[str]:
     ]
     violations += lint_manifests(root)
     violations += lint_plugin_files(root)
+    violations += lint_readme(root)
     # Every target reports the same violation when a template has no target blocks.
     return list(dict.fromkeys(str(violation) for violation in violations))
 
