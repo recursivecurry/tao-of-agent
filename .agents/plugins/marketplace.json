@@ -1,0 +1,20 @@
+{
+  "name": "tao-of-agent",
+  "interface": {
+    "displayName": "Tao of Agent"
+  },
+  "plugins": [
+    {
+      "name": "tao",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codex/tao"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

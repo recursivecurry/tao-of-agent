@@ -1,0 +1,53 @@
+name: Build PR
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "tools/**"
+
+concurrency:
+  group: build-pr
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the build App
+        if: vars.BUILD_APP_ID == ''
+        run: |
+          echo "::error::BUILD_APP_ID is not set. See docs/release-setup.md."
+          exit 1
+      # A PR opened with the default GITHUB_TOKEN does not trigger check.yml,
+      # so its required checks would never report. The App token does.
+      - uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1.12.0
+        id: app
+        with:
+          app-id: ${{ vars.BUILD_APP_ID }}
+          private-key: ${{ secrets.BUILD_APP_KEY }}
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          token: ${{ steps.app.outputs.token }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - run: python3 tools/build.py build
+      - run: python3 tools/build.py summary > "$RUNNER_TEMP/summary.md"
+      - uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7.0.11
+        with:
+          token: ${{ steps.app.outputs.token }}
+          branch: bot/build
+          delete-branch: true
+          title: "Release: regenerate distributions"
+          commit-message: "Regenerate distributions from src"
+          body-path: ${{ runner.temp }}/summary.md
+          add-paths: |
+            skills/**
+            plugins/**
+            .claude-plugin/**
+            .agents/plugins/**
