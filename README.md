@@ -1,5 +1,7 @@
 # tao-of-agent
 
+[한국어](README.ko.md)
+
 Agent skills following the [Vercel agent skills](https://vercel.com/docs/agent-resources/skills)
 format. Each skill is a directory under `skills/` with a `SKILL.md`.
 
@@ -152,6 +154,9 @@ committed because every installer reads the default branch. The build deletes an
 them that it did not produce, so hand edits and extra files there do not survive.
 
 ## Contributing
+
+[AGENTS.md](AGENTS.md) holds the rules for writing a skill that works in all three
+distributions. Claude Code and Codex read it when they work in this repository.
 
 1. Edit files under `src/`. A `.tmpl` file is rendered once per distribution, and everything
    else is copied as it is. Every distribution gets the same text unless a template uses a
