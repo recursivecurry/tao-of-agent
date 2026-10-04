@@ -246,7 +246,7 @@ class PrepareReviewTest(unittest.TestCase):
         home = Path(self.temporary.name) / "home"
         home.mkdir()
         (home / ".gitconfig").write_text(
-            f"[safe]\n directory = {self.repo}\n"
+            f"[safe]\n directory =\n directory = {self.repo}\n"
             "[core]\n fsmonitor = exit 1\n"
             '[filter "custom"]\n smudge = exit 1\n required = true\n'
         )
@@ -273,6 +273,7 @@ class PrepareReviewTest(unittest.TestCase):
     def test_does_not_trust_a_foreign_repository_without_existing_trust(self) -> None:
         home = Path(self.temporary.name) / "home"
         home.mkdir()
+        (home / ".gitconfig").write_text("[safe]\n directory =\n")
         git(self.repo, "config", "safe.directory", str(self.repo))
         real_run = subprocess.run
 
