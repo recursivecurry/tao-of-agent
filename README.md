@@ -136,8 +136,11 @@ describes failed execution, missing scope, or a material coverage gap.
 The included Python 3.11+ helper creates a standalone Git checkout at the pushed
 SHA, retaining the base for the full diff. It leaves dirty author files alone and
 does not launch a model or access the remote. It excludes inherited Git settings
-and content filters, accepts repository subdirectories, and supports `--root`
-to review a new standalone history against an empty tree. Git must be installed.
+and content filters, disables hooks and external attributes, accepts repository
+subdirectories, and supports `--root` to review a new standalone history against
+an empty tree. Git 2.32+ must be installed. Existing system/global `safe.directory`
+entries are preserved for source discovery; other settings are excluded. If setup
+cleanup fails, the error includes the remaining temporary directory's path.
 Dependencies, submodule contents, and LFS objects are not installed or fetched
 for the reviewer.
 
@@ -146,7 +149,10 @@ Code 2.1.271+ to exclude the author's instruction files with `omitClaudeMd`. A
 skills-only Claude installation needs a reviewer that also excludes those files;
 otherwise review is reported as `incomplete`. Codex and generic
 installations use their host's delegation tools with parent conversation
-inheritance explicitly disabled. The skill checks the available tool schema;
+inheritance explicitly disabled. Every installation must verify that the host
+excludes automatically loaded author workspace instructions before the reviewer
+reads the snapshot's rules; otherwise review is `incomplete`.
+The skill checks the available tool schema;
 it does not assume every client has the same spawning parameters. See the official
 [Claude Code subagent documentation](https://code.claude.com/docs/en/sub-agents)
 and [Codex subagent documentation](https://learn.chatgpt.com/docs/agent-configuration/subagents).
@@ -161,10 +167,10 @@ Git push interceptor; pushes made outside the agent session are not monitored.
 For a skills-only installation, add this pointer to `CLAUDE.md` or `AGENTS.md`:
 
 ```markdown
-Load independent-review before an authorized push to record its scope. After the
-push succeeds, start its fresh-context background review and report the result
-when it arrives. Never wait for review before pushing. If the required capabilities
-or scope are unavailable, report the review as incomplete.
+Load independent-review before an authorized push to record its scope, then start
+its fresh-context background review after success and report the result when it
+arrives. Never wait for review before pushing; report incomplete if the required
+capabilities or scope are unavailable.
 ```
 
 ## Evals

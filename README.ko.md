@@ -135,15 +135,20 @@ writing or editing prose, docs, commit messages, or UI strings.
 
 포함된 Python 3.11 이상용 보조 스크립트는 푸시한 SHA의 독립적인 Git checkout을 만들고,
 전체 diff를 비교할 기준 커밋도 보존합니다. 작성자의 미완성 파일을 건드리지 않고, 모델을
-실행하거나 원격 저장소에 접근하지 않습니다. Git이 설치되어 있어야 합니다.
-상속된 Git 설정과 내용 변환 필터를 제외하며, 저장소 하위 디렉터리도 입력으로 받습니다.
+실행하거나 원격 저장소에 접근하지 않습니다. Git 2.32 이상이 설치되어 있어야 합니다.
+상속된 Git 설정과 내용 변환 필터를 제외하고 훅과 외부 attributes 파일을 비활성화하며,
+저장소 하위 디렉터리도 입력으로 받습니다. 원본 저장소를 찾을 때는 기존 시스템 및 전역 설정의
+`safe.directory` 항목만 보존합니다. 준비 과정에서 임시 디렉터리를 삭제하지 못하면 오류에
+남은 디렉터리 경로를 표시합니다.
 독립된 새 이력은 `--root`로 빈 트리와 비교할 수 있습니다. 리뷰를 위해
 의존성을 설치하거나 submodule 내용 및 LFS 객체를 가져오지는 않습니다.
 
 Claude Code 플러그인에는 백그라운드 리뷰어 에이전트가 포함됩니다. `omitClaudeMd`로 작성자의
 지침 파일을 제외하려면 Claude Code 2.1.271 이상이 필요합니다. 스킬만 설치한 Claude 환경에서도
 그 파일을 제외하는 리뷰어가 필요하며, 없으면 `incomplete`로 보고합니다. Codex와 일반 설치에서는
-호스트의 위임 도구를 사용하고 부모 대화 상속을 명시적으로 끕니다. 스킬은 사용 가능한 도구의
+호스트의 위임 도구를 사용하고 부모 대화 상속을 명시적으로 끕니다. 모든 설치 방식에서 호스트가
+작성자 작업 공간의 지침을 자동으로 읽지 않는지 확인해야 하며, 확인할 수 없으면 `incomplete`로
+보고합니다. 리뷰어는 snapshot의 지침을 읽습니다. 스킬은 사용 가능한 도구의
 스키마를 확인하며, 모든 클라이언트가 같은 실행 인자를 제공한다고 가정하지 않습니다. 공식
 [Claude Code subagent 문서](https://code.claude.com/docs/en/sub-agents)와
 [Codex subagent 문서](https://learn.chatgpt.com/docs/agent-configuration/subagents)를 참조하세요.
@@ -157,10 +162,10 @@ Claude Code 플러그인에는 백그라운드 리뷰어 에이전트가 포함�
 스킬만 설치했다면 `CLAUDE.md` 또는 `AGENTS.md`에 다음 문구를 넣으세요.
 
 ```markdown
-Load independent-review before an authorized push to record its scope. After the
-push succeeds, start its fresh-context background review and report the result
-when it arrives. Never wait for review before pushing. If the required capabilities
-or scope are unavailable, report the review as incomplete.
+Load independent-review before an authorized push to record its scope, then start
+its fresh-context background review after success and report the result when it
+arrives. Never wait for review before pushing; report incomplete if the required
+capabilities or scope are unavailable.
 ```
 
 ## 평가

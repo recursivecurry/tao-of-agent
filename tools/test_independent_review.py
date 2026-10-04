@@ -20,8 +20,24 @@ with patch.object(sys, "dont_write_bytecode", True):
 
 
 def git(repo: Path, *arguments: str) -> str:
+    environment = {
+        name: value for name, value in os.environ.items() if not name.startswith("GIT_")
+    }
+    environment.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
     return subprocess.run(
-        ["git", "-C", str(repo), *arguments],
+        [
+            "git",
+            "-c",
+            f"core.hooksPath={os.devnull}",
+            "-c",
+            f"core.attributesFile={os.devnull}",
+            "-c",
+            "core.fsmonitor=false",
+            "-C",
+            str(repo),
+            *arguments,
+        ],
+        env=environment,
         check=True,
         capture_output=True,
         text=True,
@@ -121,11 +137,7 @@ class PrepareReviewTest(unittest.TestCase):
 
     def test_accepts_a_bare_repository(self) -> None:
         bare = Path(self.temporary.name) / "bare.git"
-        subprocess.run(
-            ["git", "clone", "--quiet", "--bare", str(self.repo), str(bare)],
-            check=True,
-            capture_output=True,
-        )
+        git(self.repo, "clone", "--quiet", "--bare", str(self.repo), str(bare))
         self.repo = bare
         snapshot = self.snapshot(self.base, self.head)
         self.assertEqual((snapshot / "code.txt").read_text(), "pushed\n")
@@ -197,6 +209,127 @@ class PrepareReviewTest(unittest.TestCase):
         with patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": str(config)}):
             snapshot = self.snapshot(self.base, head)
         self.assertEqual((snapshot / "code.txt").read_text(), committed_content)
+
+    def test_does_not_run_hooks_tracked_in_the_pushed_tree(self) -> None:
+        marker = Path(self.temporary.name) / "tracked-hook-ran"
+        hook = self.repo / "disabled-hooks/post-checkout"
+        hook.parent.mkdir()
+        hook.write_text(f'#!/bin/sh\nprintf ran > "{marker}"\n')
+        hook.chmod(0o755)
+        git(self.repo, "add", "disabled-hooks")
+        head = self.commit("with tracked hook\n")
+
+        snapshot = self.snapshot(self.base, head)
+
+        self.assertTrue((snapshot / "disabled-hooks/post-checkout").exists())
+        self.assertFalse(marker.exists())
+
+    def test_ignores_default_global_attributes(self) -> None:
+        home = Path(self.temporary.name) / "home"
+        xdg = Path(self.temporary.name) / "xdg"
+        for attributes in (home / ".config/git/attributes", xdg / "git/attributes"):
+            attributes.parent.mkdir(parents=True)
+            attributes.write_text("* text eol=crlf\n")
+        for xdg_home in ("", str(xdg)):
+            with (
+                self.subTest(xdg_home=xdg_home),
+                patch.dict(
+                    os.environ, {"HOME": str(home), "XDG_CONFIG_HOME": xdg_home}
+                ),
+            ):
+                snapshot = self.snapshot(self.base, self.head)
+                self.assertEqual((snapshot / "code.txt").read_bytes(), b"pushed\n")
+
+    def test_preserves_existing_global_trust_without_other_global_settings(
+        self,
+    ) -> None:
+        home = Path(self.temporary.name) / "home"
+        home.mkdir()
+        (home / ".gitconfig").write_text(
+            f"[safe]\n directory = {self.repo}\n"
+            "[core]\n fsmonitor = exit 1\n"
+            '[filter "custom"]\n smudge = exit 1\n required = true\n'
+        )
+        (self.repo / ".gitattributes").write_text("*.txt filter=custom\n")
+        git(self.repo, "add", ".gitattributes")
+        head = self.commit("unfiltered\n")
+        real_run = subprocess.run
+
+        def simulate_foreign_owner(command, **kwargs):
+            directory = command[command.index("-C") + 1]
+            if Path(directory).is_relative_to(self.repo):
+                kwargs["env"] = dict(kwargs["env"], GIT_TEST_ASSUME_DIFFERENT_OWNER="1")
+            return real_run(command, **kwargs)
+
+        with (
+            patch.dict(os.environ, {"HOME": str(home), "XDG_CONFIG_HOME": ""}),
+            patch.object(
+                prepare_review.subprocess, "run", side_effect=simulate_foreign_owner
+            ),
+        ):
+            snapshot = self.snapshot(self.base, head)
+        self.assertEqual((snapshot / "code.txt").read_bytes(), b"unfiltered\n")
+
+    def test_does_not_trust_a_foreign_repository_without_existing_trust(self) -> None:
+        home = Path(self.temporary.name) / "home"
+        home.mkdir()
+        git(self.repo, "config", "safe.directory", str(self.repo))
+        real_run = subprocess.run
+
+        def simulate_foreign_owner(command, **kwargs):
+            kwargs["env"] = dict(kwargs["env"], GIT_TEST_ASSUME_DIFFERENT_OWNER="1")
+            return real_run(command, **kwargs)
+
+        with (
+            patch.dict(os.environ, {"HOME": str(home), "XDG_CONFIG_HOME": ""}),
+            patch.object(
+                prepare_review.subprocess, "run", side_effect=simulate_foreign_owner
+            ),
+            self.assertRaises(subprocess.CalledProcessError) as raised,
+        ):
+            prepare_review.prepare_review(self.repo, self.base, self.head)
+        self.assertIn("dubious ownership", raised.exception.stderr)
+
+    def test_rejects_git_versions_without_global_config_isolation(self) -> None:
+        real_git = prepare_review.git
+
+        def old_git(directory: Path, *arguments: str, **kwargs) -> str:
+            if arguments == ("--version",):
+                return "git version 2.31.1"
+            return real_git(directory, *arguments, **kwargs)
+
+        with (
+            patch.object(prepare_review, "git", side_effect=old_git),
+            patch.object(prepare_review.tempfile, "mkdtemp") as make_snapshot,
+            self.assertRaisesRegex(ValueError, "Git 2.32\\+ is required"),
+        ):
+            prepare_review.prepare_review(self.repo, self.base, self.head)
+        make_snapshot.assert_not_called()
+
+    def test_fixtures_ignore_user_signing_hooks_and_templates(self) -> None:
+        home = Path(self.temporary.name) / "home"
+        home.mkdir()
+        hooks = home / "hooks"
+        hooks.mkdir()
+        hook = hooks / "pre-commit"
+        hook.write_text("#!/bin/sh\nexit 1\n")
+        hook.chmod(0o755)
+        template = home / "template"
+        template.mkdir()
+        (template / "fixture-contamination").write_text("user template\n")
+        (home / ".gitconfig").write_text(
+            "[commit]\n gpgsign = true\n[gpg]\n program = false\n"
+            f"[core]\n hooksPath = {hooks}\n[init]\n templateDir = {template}\n"
+        )
+        fixture = home / "fixture"
+        fixture.mkdir()
+        with patch.dict(os.environ, {"HOME": str(home), "XDG_CONFIG_HOME": ""}):
+            git(fixture, "init", "--quiet")
+            git(fixture, "config", "user.name", "Fixture")
+            git(fixture, "config", "user.email", "fixture@example.com")
+            git(fixture, "commit", "--quiet", "--allow-empty", "-m", "Fixture")
+        self.assertFalse((fixture / ".git/fixture-contamination").exists())
+        self.assertEqual(git(fixture, "log", "-1", "--format=%s"), "Fixture")
 
     def test_ignores_system_and_global_non_lfs_filters(self) -> None:
         (self.repo / ".gitattributes").write_text("*.txt filter=custom\n")
@@ -335,10 +468,10 @@ class PrepareReviewTest(unittest.TestCase):
         snapshot.mkdir()
         real_git = prepare_review.git
 
-        def fail_fetch(directory: Path, *arguments: str) -> str:
+        def fail_fetch(directory: Path, *arguments: str, **kwargs) -> str:
             if arguments[0] == "fetch":
                 raise subprocess.CalledProcessError(1, "git fetch", stderr="failed")
-            return real_git(directory, *arguments)
+            return real_git(directory, *arguments, **kwargs)
 
         with (
             patch.object(
@@ -349,6 +482,55 @@ class PrepareReviewTest(unittest.TestCase):
         ):
             prepare_review.prepare_review(self.repo, self.base, self.head)
         self.assertFalse(snapshot.exists())
+
+    def test_cleans_partial_snapshot_on_interrupt(self) -> None:
+        snapshot = Path(self.temporary.name) / "interrupted-snapshot"
+        snapshot.mkdir()
+        real_git = prepare_review.git
+
+        def interrupt_fetch(directory: Path, *arguments: str, **kwargs) -> str:
+            if arguments[0] == "fetch":
+                raise KeyboardInterrupt
+            return real_git(directory, *arguments, **kwargs)
+
+        with (
+            patch.object(
+                prepare_review.tempfile, "mkdtemp", return_value=str(snapshot)
+            ),
+            patch.object(prepare_review, "git", side_effect=interrupt_fetch),
+            self.assertRaises(KeyboardInterrupt),
+        ):
+            prepare_review.prepare_review(self.repo, self.base, self.head)
+        self.assertFalse(snapshot.exists())
+
+    def test_reports_cleanup_failure_without_masking_setup_failure(self) -> None:
+        snapshot = Path(self.temporary.name) / "failed-snapshot"
+        snapshot.mkdir()
+        real_git = prepare_review.git
+
+        def fail_fetch(directory: Path, *arguments: str, **kwargs) -> str:
+            if arguments[0] == "fetch":
+                raise subprocess.CalledProcessError(
+                    1, "git fetch", stderr="original failure"
+                )
+            return real_git(directory, *arguments, **kwargs)
+
+        with (
+            patch.object(
+                prepare_review.tempfile, "mkdtemp", return_value=str(snapshot)
+            ),
+            patch.object(prepare_review, "git", side_effect=fail_fetch),
+            patch.object(
+                prepare_review.shutil, "rmtree", side_effect=PermissionError("denied")
+            ),
+            patch("sys.stderr") as stderr,
+            self.assertRaises(subprocess.CalledProcessError) as raised,
+        ):
+            prepare_review.prepare_review(self.repo, self.base, self.head)
+        self.assertEqual(raised.exception.stderr, "original failure")
+        message = "".join(call.args[0] for call in stderr.write.call_args_list)
+        self.assertIn(str(snapshot), message)
+        self.assertIn("denied", message)
 
 
 if __name__ == "__main__":

@@ -46,7 +46,7 @@ obtain a review. Never infer its old SHA from the remote after the update.
 ## Prepare an isolated snapshot
 
 Read [scripts/prepare_review.py](scripts/prepare_review.py) for its CLI, then run
-it once per review scope after push success. It requires Python 3.11+ and Git:
+it once per review scope after push success. It requires Python 3.11+ and Git 2.32+:
 
 ```text
 python3 <skill-directory>/scripts/prepare_review.py --repo <source-repository> --base <full-base-sha> --head <full-pushed-sha>
@@ -59,9 +59,13 @@ The script creates a standalone temporary Git repository at the pinned head,
 retains the base for comparison, and prints JSON with `directory`, `base_sha`,
 `head_sha`, and `baseline_kind` (`commit` or `empty-tree`). Root mode creates the
 empty tree in the snapshot's object format. The helper accepts a repository root,
-subdirectory, linked worktree, or bare repository. Its Git commands exclude
-inherited Git environment and global/system settings; external content filters
-do not run during checkout. It neither pushes nor launches a model. Add remote/ref
+subdirectory, linked worktree, or bare repository. It preserves only existing
+system/global `safe.directory` entries for source discovery, then trusts the
+validated Git directory for local object access. Its Git commands exclude other
+inherited settings and disable hooks and external attributes; content filters
+do not run during checkout. Interrupted setup attempts cleanup; if cleanup fails,
+the helper reports the remaining path without hiding the setup error. It neither
+pushes nor launches a model. Add remote/ref
 identity and baseline provenance to the task message; its output alone is not
 proof of a successful push. Missing commits or setup failure mean `incomplete`.
 
@@ -88,12 +92,16 @@ Verify that the host's existing permissions allow the reviewer to read and run
 commands in the temporary snapshot. Do not change permissions to enable access.
 If access is denied, return `incomplete`; never fall back to the author's checkout.
 
+Verify that the host excludes automatically loaded instruction files from the
+author's workspace before the reviewer reads rules from the pinned snapshot.
+This also applies to skills-only installations; if exclusion cannot be verified,
+report `incomplete` rather than starting an ordinary subagent.
+
 <!-- target:claude -->
 Require Claude Code 2.1.271+ for `omitClaudeMd`. Use the plugin's
 `tao:independent-reviewer` agent as a non-fork background task with that field
 enabled, excluding the author's working-tree instruction files. Pass the reference
-path and scope in its task message. In a skills-only installation, use a fresh
-reviewer only if it also suppresses those files; otherwise report `incomplete`.
+path and scope in its task message.
 Do not use a conversation fork or resume an implementation agent.
 <!-- /target -->
 <!-- target:codex -->
