@@ -1,7 +1,7 @@
 {
   "name": "tao",
-  "description": "Skills for disciplined agent work: minimal code, clean Git history, natural writing.",
-  "version": "0.2.0",
+  "description": "Skills for disciplined agent work: minimal code, clean Git history, independent review, natural writing.",
+  "version": "0.3.0",
   "author": {
     "name": "recursivecurry"
   },

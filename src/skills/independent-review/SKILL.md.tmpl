@@ -1,0 +1,123 @@
+---
+name: independent-review
+description: Review successfully pushed changes in the background with a fresh-context reviewer and report evidence-based findings. Load before an authorized push to record its scope, and start the review after it succeeds. Never gate the push on review.
+license: MIT
+metadata:
+  author: recursivecurry
+  version: 1.0.0
+---
+
+# Independent review
+
+After an authorized push succeeds, delegate a review of the pushed code to a
+fresh-context background agent. Keep the main session free for other work and
+report the result when it arrives. This skill grants no permission to push, fix
+code, post comments, or send notifications outside the current conversation.
+
+## Record the push scope
+
+Before pushing, record the remote, each destination ref, its existing full commit
+SHA, and the full commit SHA intended for that ref. Resolve the actual refspecs;
+do not assume the current branch, upstream, or `HEAD` is what will be pushed.
+Use an authoritative remote ref observation or push receipt, not a potentially
+stale remote-tracking ref. Keep this bookkeeping short; do not start a review or
+wait for one before pushing.
+
+After the push, check its per-ref outcome. Review only successfully updated refs,
+including successful updates in a partially failed push. Skip failed, unchanged,
+and deleted refs, and report why a deletion has no code snapshot to review.
+
+- Existing branch: compare the recorded old commit to the pushed new commit.
+  Include every commit introduced by the update, not just the last commit.
+- New branch: record that the old ref was absent. Choose a justified baseline
+  from the intended target branch, pin its SHA, and explain that choice in the
+  report. Do not invent an old SHA or silently review only the latest commit.
+- Force update: compare the old and new trees directly; include the newly
+  reachable commits. Do not replace the old SHA with a merge-base.
+- Multiple refs: track each update separately. Review commit-bearing tags by
+  their peeled commit SHAs; explain unsupported non-commit refs.
+
+If scope was not captured, cannot be recovered reliably, or changed concurrently
+on the remote, report `incomplete` for that ref. Do not delay or retry the push to
+obtain a review. Never infer its old SHA from the remote after the update.
+
+## Prepare an isolated snapshot
+
+Read [scripts/prepare_review.py](scripts/prepare_review.py) for its CLI, then run
+it once per review scope after push success. It requires Python 3.11+ and Git:
+
+```text
+python3 <skill-directory>/scripts/prepare_review.py --repo <source-repository> --base <full-base-sha> --head <full-pushed-sha>
+```
+
+The script creates a standalone temporary Git repository at the pinned head,
+retains the base for comparison, and prints JSON with `directory`, `base_sha`,
+and `head_sha`. It neither pushes nor launches a model. Add remote/ref identity
+and baseline provenance to the task message; its output alone is not proof of a
+successful push. Missing commits or setup failure mean `incomplete`.
+
+Keep the original working tree untouched, even if it is dirty. Retain the
+snapshot until the reviewer stops. Then remove only the temporary directory
+created by the script; never remove a user workspace or clean an active review.
+Do not fetch submodules or Git LFS content implicitly. If missing content prevents
+reviewing affected behavior, state the gap and return `incomplete`.
+
+## Start a fresh background reviewer
+
+Read [references/reviewer.md](references/reviewer.md). Give the reviewer the path
+to that reference, the snapshot directory, push identity, pinned SHAs, original
+requirements and constraints, and relevant repository rules/documents. Preserve
+the user's requirements without adding the author's interpretation. The reviewer
+must read project instructions from the pinned snapshot.
+
+Do not pass the parent transcript, implementation plan, reasoning, self-review,
+prior conclusions, or claims that tests passed. Do not reuse an agent or memory
+from implementation or a previous review. Let the reviewer collect test evidence.
+Do not substitute a fork of the author conversation for a fresh context.
+
+<!-- target:claude -->
+Use the plugin's `tao:independent-reviewer` agent as a non-fork background task.
+Pass the reference path and scope in its task message. If only this skill was
+installed, use a fresh general-purpose reviewer with the same instructions. Do
+not use a conversation fork or resume an implementation agent.
+<!-- /target -->
+<!-- target:codex -->
+Use a fresh background subagent with conversation inheritance disabled. Where
+the spawn tool exposes `fork_turns`, explicitly set it to `"none"`; where it
+exposes `fork_context`, explicitly set it to `false`. Inspect the available tool
+schema rather than passing unsupported parameters. A separate context window
+alone does not establish that the parent conversation was excluded.
+<!-- /target -->
+<!-- target:generic -->
+Use the host's fresh-context background delegation mechanism and explicitly
+disable parent conversation inheritance. Verify those capabilities before
+starting; a separate context window alone does not establish independence.
+<!-- /target -->
+
+If fresh context, background execution, or completion delivery is unavailable,
+report `incomplete` and the missing capability. Do not run a blocking review or
+launch an unmanaged process as a silent fallback. Use the session's model by
+default. Do not expand permissions or spawn additional reviewers.
+
+Track each task with its remote/ref, base, head, and snapshot path. Announce that
+review is running, then continue the user's work without waiting for it. Review
+scope is fixed; a later push starts a separate task. Do not recursively review
+reviewer activity. This version is session-scoped: it does not guarantee execution
+or notification after the session closes.
+
+## Report completion
+
+Only report a completed review after receiving its actual result. In the current
+conversation, name the remote/ref, reviewed SHAs, baseline provenance, and status:
+
+- `completed`: the defined scope was inspected, with findings or none found.
+- `incomplete`: setup, capability, execution, cancellation, or coverage failed.
+
+Include the reviewer's evidence, checks actually run, and material limitations.
+Keep confirmed defects separate from unresolved questions. No findings means no
+supported defects were found, not that the code is guaranteed correct. A partial
+result or missing requirement needed to judge behavior cannot be called complete.
+
+If a newer push has occurred, label the result as applying to the older SHA. Do
+not automatically fix, revert, commit, or push based on findings. If the user asks
+for a fix, handle it as a separate authorized change.

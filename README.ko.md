@@ -11,6 +11,7 @@
 | --- | --- |
 | [`minimal-code`](skills/minimal-code) | 정확하고 읽기 쉬우며 테스트된 변경을 가장 작게 만듭니다. KISS, YAGNI, DRY, 명시적인 오류 처리, TDD를 따릅니다. |
 | [`git-hygiene`](skills/git-hygiene) | 개발 중에는 리뷰하기 쉽고 병합 후에는 의미가 남는 Git 이력을 유지합니다. |
+| [`independent-review`](skills/independent-review) | 푸시한 코드를 독립된 컨텍스트에서 백그라운드로 리뷰하고 근거가 있는 결함을 보고합니다. |
 | [`natural-clear-writing`](skills/natural-clear-writing) | 상투적인 AI 문체 없이 글을 쓰거나 고칩니다. 한국어에는 추가 규칙을 적용합니다. |
 
 ## 설치
@@ -26,7 +27,7 @@ Claude Code 안에서 다음을 실행합니다.
 ```
 
 플러그인의 스킬에는 네임스페이스가 붙습니다: `tao:minimal-code`, `tao:git-hygiene`,
-`tao:natural-clear-writing`.
+`tao:independent-review`, `tao:natural-clear-writing`.
 
 ### Codex 플러그인으로 설치
 
@@ -64,17 +65,17 @@ npx skills add recursivecurry/tao-of-agent
 ```bash
 npx skills add recursivecurry/tao-of-agent --skill minimal-code
 npx skills add recursivecurry/tao-of-agent --skill git-hygiene
+npx skills add recursivecurry/tao-of-agent --skill independent-review
 npx skills add recursivecurry/tao-of-agent --skill natural-clear-writing
 ```
 
 전역으로 설치하려면 `-g`를, 특정 에이전트를 지정하려면 `-a claude-code`를 붙입니다. 이렇게
-설치한 스킬은 접두사 없는 이름(`minimal-code`, `git-hygiene`, `natural-clear-writing`)을
-그대로 씁니다.
+설치한 스킬은 접두사 없는 이름(`minimal-code`, `git-hygiene`, `independent-review`,
+`natural-clear-writing`)을 그대로 씁니다.
 
 ### 수동 설치
 
-Claude Code에서는 스킬 디렉터리를 복사합니다. `references/` 하위 디렉터리가 있으면 함께
-복사합니다.
+Claude Code에서는 스크립트와 참조 파일을 포함한 스킬 디렉터리 전체를 복사합니다.
 
 ```bash
 cp -r skills/minimal-code ~/.claude/skills/
@@ -83,10 +84,11 @@ cp -r skills/natural-clear-writing ~/.claude/skills/
 
 ## 플러그인이 추가하는 것
 
-두 플러그인은 세션을 시작할 때마다 hook을 실행해 짧은 지침 두 가지를 넣습니다. 하나는 코드를
-바꿀 때 `tao:minimal-code`를 따르고 완료를 보고하기 전에 그 스킬의 완료 체크리스트를 점검하라는
-지침이고, 다른 하나는 일반 답변에서 상투적인 표현을 쓰지 말라는 지침입니다. 아래 두 절은 그
-이유를 설명하고, 플러그인 없이 스킬만 설치한 경우 직접 붙여 넣을 같은 문구를 제공합니다.
+두 플러그인은 세션을 시작할 때마다 hook을 실행해 지침을 넣습니다. 코드를 바꿀 때
+`tao:minimal-code`를 따르고 완료를 보고하기 전에 완료 체크리스트를 점검하며, 일반 답변에서
+상투적인 표현을 쓰지 않도록 합니다. 푸시가 성공하면 독립적인 백그라운드 리뷰도 실행합니다.
+아래 절에서는 그 이유를 설명하고, 플러그인 없이 스킬만 설치한 경우 직접 붙여 넣을 같은 문구를
+제공합니다.
 
 ## `minimal-code`를 항상 적용하기
 
@@ -118,11 +120,53 @@ dramatic closers, or Markdown decoration. Load natural-clear-writing when
 writing or editing prose, docs, commit messages, or UI strings.
 ```
 
+## 푸시 후 독립적인 리뷰
+
+`independent-review`는 승인된 푸시의 범위를 실행 전에 기록하고, 성공한 변경을 백그라운드에서
+리뷰합니다. 푸시 전에 리뷰를 기다리지 않으며, 스킬 자체가 푸시 권한을 부여하지는 않습니다.
+결과는 검토한 remote/ref와 SHA를 포함해 현재 대화에 보고합니다. 발견 사항을 이유로 자동으로
+수정하거나 추가 푸시하지 않습니다.
+
+리뷰어에게는 원래 요구사항과 저장소 규칙을 전달하고, 작성자의 대화와 추론 및 자체 리뷰는
+전달하지 않습니다. 결함은 지원하는 입력과 실행 경로로 입증해야 하며, 결함을 찾지 못해도
+정상적인 결과입니다. `completed`는 발견 사항의 유무와 관계없이 리뷰를 마쳤다는 뜻입니다.
+실행 실패, 범위 누락, 중요한 검토 공백이 있으면 `incomplete`로 보고합니다.
+
+포함된 Python 3.11 이상용 보조 스크립트는 푸시한 SHA의 독립적인 Git checkout을 만들고,
+전체 diff를 비교할 기준 커밋도 보존합니다. 작성자의 미완성 파일을 건드리지 않고, 모델을
+실행하거나 원격 저장소에 접근하지 않습니다. Git이 설치되어 있어야 합니다. 리뷰를 위해
+의존성을 설치하거나 submodule 내용 및 LFS 객체를 가져오지는 않습니다.
+
+Claude Code 플러그인에는 백그라운드 리뷰어 에이전트가 포함됩니다. Codex와 일반 설치에서는
+호스트의 위임 도구를 사용하고 부모 대화 상속을 명시적으로 끕니다. 스킬은 사용 가능한 도구의
+스키마를 확인하며, 모든 클라이언트가 같은 실행 인자를 제공한다고 가정하지 않습니다. 공식
+[Claude Code subagent 문서](https://code.claude.com/docs/en/sub-agents)와
+[Codex subagent 문서](https://learn.chatgpt.com/docs/agent-configuration/subagents)를 참조하세요.
+
+이 버전은 현재 세션에서 독립된 컨텍스트의 백그라운드 실행과 완료 결과 전달을 지원해야 합니다.
+지원하지 않으면 전면에서 리뷰를 실행하는 대신 `incomplete`로 보고합니다. 세션 종료 후 실행이나
+알림은 보장하지 않습니다. SessionStart hook은 작업 지침을 넣으며 Git 푸시를 가로채지는
+않습니다. 에이전트 세션 밖에서 수행한 푸시는 감시하지 않습니다.
+
+스킬만 설치했다면 `CLAUDE.md` 또는 `AGENTS.md`에 다음 문구를 넣으세요.
+
+```markdown
+Load independent-review before an authorized push to record its scope. After the
+push succeeds, start its fresh-context background review and report the result
+when it arrives. Never wait for review before pushing. If the required capabilities
+or scope are unavailable, report the review as incomplete.
+```
+
 ## 평가
 
 `evals/`에는 `natural-clear-writing`의 평가 케이스가 있습니다. 영어 문서, 한국어 문서, 두
 언어가 섞인 메모, 플레이스홀더가 있는 UI 문자열, 커밋 메시지입니다. 각 케이스에는 LLM 채점기가
 있어 상투적인 표현이 사라졌는지, 모든 사실과 플레이스홀더와 어조가 보존되었는지 확인합니다.
+
+independent-review의 평가 케이스는 근거가 있는 결함, 결함이 없는 의도적인 동작, 백그라운드
+기능이 없는 환경을 다룹니다. 오프라인 동작 평가이므로 실제 위임이나 알림 기능이 동작한다는
+증거는 아닙니다. `tools/test_independent_review.py`는 실제 임시 Git 저장소에서 보조 스크립트를
+검증하며, 여러 커밋의 변경과 강제 업데이트도 포함합니다.
 
 ```bash
 tools/eval.sh --judge-model sonnet

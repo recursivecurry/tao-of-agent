@@ -11,6 +11,7 @@ format. Each skill is a directory under `skills/` with a `SKILL.md`.
 | --- | --- |
 | [`minimal-code`](skills/minimal-code) | Write the smallest correct, readable, tested change — KISS, YAGNI, DRY, explicit errors, TDD. |
 | [`git-hygiene`](skills/git-hygiene) | Keep Git history easy to review during development and meaningful after merge. |
+| [`independent-review`](skills/independent-review) | Review pushed code in a fresh background context and report supported defects. |
 | [`natural-clear-writing`](skills/natural-clear-writing) | Write or edit prose without formulaic AI phrasing, with extra rules for Korean. |
 
 ## Install
@@ -25,7 +26,8 @@ skill above. Inside Claude Code:
 /plugin install tao@tao-of-agent
 ```
 
-Plugin skills are namespaced: `tao:minimal-code`, `tao:git-hygiene`, `tao:natural-clear-writing`.
+Plugin skills are namespaced: `tao:minimal-code`, `tao:git-hygiene`,
+`tao:independent-review`, `tao:natural-clear-writing`.
 
 ### As a Codex plugin
 
@@ -63,15 +65,17 @@ Or pick one:
 ```bash
 npx skills add recursivecurry/tao-of-agent --skill minimal-code
 npx skills add recursivecurry/tao-of-agent --skill git-hygiene
+npx skills add recursivecurry/tao-of-agent --skill independent-review
 npx skills add recursivecurry/tao-of-agent --skill natural-clear-writing
 ```
 
 Add `-g` to install globally, or `-a claude-code` to target a specific agent. Skills installed
-this way keep their plain names (`minimal-code`, `git-hygiene`, `natural-clear-writing`).
+this way keep their plain names (`minimal-code`, `git-hygiene`, `independent-review`,
+`natural-clear-writing`).
 
 ### Manually
 
-For Claude Code, copy any skill directory, with its `references/` subdirectory if it has one:
+For Claude Code, copy the complete skill directory, including any scripts and references:
 
 ```bash
 cp -r skills/minimal-code ~/.claude/skills/
@@ -80,9 +84,10 @@ cp -r skills/natural-clear-writing ~/.claude/skills/
 
 ## What the plugins add
 
-Both plugins run a hook at the start of every session that adds two short instructions: follow
+Both plugins run a hook at the start of every session that adds instructions: follow
 `tao:minimal-code` when changing code and work through its done checklist before reporting
-done, and keep ordinary replies free of formulaic phrasing. The two sections below explain
+done, keep ordinary replies free of formulaic phrasing, and run an independent background
+review after successful pushes. The sections below explain
 why, and give the same text to paste by hand if you installed the skills without a plugin.
 
 ## Making `minimal-code` always apply
@@ -114,11 +119,57 @@ dramatic closers, or Markdown decoration. Load natural-clear-writing when
 writing or editing prose, docs, commit messages, or UI strings.
 ```
 
+## Independent review after push
+
+`independent-review` records an authorized push's scope before it runs, then reviews
+successful updates in the background. It never waits for review before pushing and
+does not authorize a push itself. Results appear in the current conversation, with
+the reviewed remote/ref and SHA. Findings do not trigger automatic fixes or pushes.
+
+The reviewer gets the original requirements and repository rules, without the
+author's conversation, reasoning, or self-review. It must substantiate defects with
+supported inputs and execution paths; finding no defects is a valid result.
+`completed` describes a finished review, including one with findings. `incomplete`
+describes failed execution, missing scope, or a material coverage gap.
+
+The included Python 3.11+ helper creates a standalone Git checkout at the pushed
+SHA, retaining the base for the full diff. It leaves dirty author files alone and
+does not launch a model or access the remote. Git must be installed. Dependencies,
+submodule contents, and LFS objects are not installed or fetched for the reviewer.
+
+The Claude Code plugin includes a background reviewer agent. Codex and generic
+installations use their host's delegation tools with parent conversation
+inheritance explicitly disabled. The skill checks the available tool schema;
+it does not assume every client has the same spawning parameters. See the official
+[Claude Code subagent documentation](https://code.claude.com/docs/en/sub-agents)
+and [Codex subagent documentation](https://learn.chatgpt.com/docs/agent-configuration/subagents).
+
+This version needs fresh-context background execution and completion delivery in
+the current session. If those are unavailable, it reports `incomplete` rather than
+running a foreground review. It does not guarantee execution or notification after
+the session closes. The SessionStart hook supplies a workflow instruction, not a
+Git push interceptor; pushes made outside the agent session are not monitored.
+
+For a skills-only installation, add this pointer to `CLAUDE.md` or `AGENTS.md`:
+
+```markdown
+Load independent-review before an authorized push to record its scope. After the
+push succeeds, start its fresh-context background review and report the result
+when it arrives. Never wait for review before pushing. If the required capabilities
+or scope are unavailable, report the review as incomplete.
+```
+
 ## Evals
 
 `evals/` holds cases for `natural-clear-writing`: an English doc, a Korean doc, a bilingual
 note, UI strings with placeholders, and a commit message. Each case has an LLM grader that
 checks formulaic phrasing is gone and every fact, placeholder, and register survives.
+
+The independent-review cases exercise supported defects, intentional behavior
+without defects, and unavailable background capabilities. These are offline
+behavioral exercises; they do not establish live delegation or notification
+support. `tools/test_independent_review.py` checks the snapshot helper against real
+temporary Git repositories, including multiple commits and force updates.
 
 ```bash
 tools/eval.sh --judge-model sonnet
