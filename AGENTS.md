@@ -12,6 +12,15 @@ generic skills installed with `npx skills`. The README describes the layout.
   Files for one agent go in `src/claude/` or `src/codex/`.
 - `README.ko.md` is the Korean translation of `README.md`. Change both together.
 
+## Running the skills CLI here
+
+- Do not run `npx skills remove` or `npx skills add` in this repository without `-g`. The CLI
+  treats the top-level `skills/` as skills installed into this project, so `remove` deletes
+  the generated skills there, and `add` installs into the working tree.
+- To manage your own installed skills, pass `-g` or run the command outside the repository.
+- `npx skills add . --list` only reads, and `tools/check_skills_cli.sh` uses it.
+- If `skills/` was deleted this way, run `git restore skills`.
+
 ## Writing a skill
 
 A skill's text reaches all three outputs, so write it for any agent.
