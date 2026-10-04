@@ -153,6 +153,9 @@ them that it did not produce, so hand edits and extra files there do not survive
 
 ## Contributing
 
+[AGENTS.md](AGENTS.md) holds the rules for writing a skill that works in all three
+distributions. Claude Code and Codex read it when they work in this repository.
+
 1. Edit files under `src/`. A `.tmpl` file is rendered once per distribution, and everything
    else is copied as it is. Every distribution gets the same text unless a template uses a
    target block:
