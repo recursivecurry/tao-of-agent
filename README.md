@@ -90,9 +90,62 @@ note, UI strings with placeholders, and a commit message. Each case has an LLM g
 checks formulaic phrasing is gone and every fact, placeholder, and register survives.
 
 ```bash
-claude plugin eval . --judge-model sonnet
+tools/eval.sh --judge-model sonnet
 ```
 
 The default judge (haiku) misreads the Korean criteria, so pass a stronger judge. The run also
 scores a no-plugin baseline and reports the delta, which is the number to watch when editing
 the skill. Results land in `evals/results/`, which is ignored by git.
+
+`claude plugin eval` reads cases only from inside the plugin directory, and the cases are not
+shipped with the plugin. The script rebuilds the outputs, copies `plugins/tao/` and `evals/`
+into a temporary directory, and runs the eval there. Extra arguments are passed through. Do
+not run `claude plugin eval .` at the repository root: it finds the cases but loads no plugin.
+
+## Repository layout
+
+```text
+src/skills/<skill>/SKILL.md.tmpl   skill sources: edit here
+src/claude/                        plugin and marketplace manifests
+tools/build.py                     generates the three directories below
+skills/                            generated, read by the skills CLI
+plugins/tao/                       generated, the Claude Code plugin
+.claude-plugin/marketplace.json    generated
+evals/                             eval cases, not shipped
+```
+
+`skills/`, `plugins/tao/`, and `.claude-plugin/` are build output. They are committed because
+both installers read the default branch. The build deletes any file in them that it did not
+produce, so hand edits and extra files there do not survive.
+
+## Contributing
+
+1. Edit files under `src/`. A `.tmpl` file is rendered once per distribution, and everything
+   else is copied as it is. Both distributions get the same text unless a template uses a
+   target block:
+
+   ```markdown
+   <!-- target:claude -->
+   This line appears only in the Claude Code plugin.
+   <!-- /target -->
+   ```
+
+   The targets are `claude` and `generic`. A marker must be a whole line, and blocks do not
+   nest.
+2. If the change affects a skill, raise `version` in `src/claude/plugin.json`. Installed
+   plugins update only when the version changes, and the version check fails the build PR
+   without it.
+3. Run the checks:
+
+   ```bash
+   python3 -m unittest discover -s tools
+   python3 tools/build.py lint
+   ```
+
+4. Open a pull request with the `src/` changes. You do not need to commit generated files. If
+   you do, run `python3 tools/build.py build` first so that `python3 tools/build.py check`
+   passes.
+
+After the pull request merges, a workflow opens a "Release: regenerate distributions" pull
+request with the rebuilt outputs. Merging that one is the release.
+[docs/release-setup.md](docs/release-setup.md) describes the one-time setup it needs.
