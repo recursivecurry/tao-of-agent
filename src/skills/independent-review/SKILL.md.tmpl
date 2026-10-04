@@ -30,9 +30,12 @@ and deleted refs, and report why a deletion has no code snapshot to review.
 - Existing branch: compare the recorded old commit to the pushed new commit.
   Include every commit introduced by the update, not just the last commit.
 - New branch: record that the old ref was absent. Choose a justified baseline
-  from the intended target branch, pin its SHA, and explain that choice in the
-  report. For an empty remote or a standalone orphan history with no target
-  baseline, use an explicit empty-tree baseline and inspect all reachable commits.
+  by pinning the intended target branch's SHA and finding its unique merge-base
+  with the pushed head (`git merge-base --all <target-sha> <head-sha>`). Pin that
+  fork point and explain both SHAs in the report. Multiple merge-bases or an
+  unknown target mean `incomplete`; do not compare against a target tip that has
+  advanced independently. For an empty remote or a standalone orphan history
+  with no target baseline, use an explicit empty-tree baseline and inspect all reachable commits.
   Do not invent an old SHA or silently review only the latest commit.
 - Force update: compare the old and new trees directly; include the newly
   reachable commits. Do not replace the old SHA with a merge-base.
@@ -43,13 +46,43 @@ If scope was not captured, cannot be recovered reliably, or changed concurrently
 on the remote, report `incomplete` for that ref. Do not delay or retry the push to
 obtain a review. Never infer its old SHA from the remote after the update.
 
+## Check host capabilities before setup
+
+Before creating a snapshot, verify fresh context, background execution, completion
+delivery, and exclusion of automatically loaded author workspace instructions.
+Choose an existing snapshot parent outside the author's working tree that the
+reviewer can already read and run Git commands in, and verify access to the
+reviewer instructions path. Directory read access alone does not authorize commands.
+If any capability or permitted parent is unavailable, report `incomplete` without
+creating a snapshot. Do not
+expand permissions, run a foreground review, or launch an unmanaged fallback.
+
+<!-- target:claude -->
+Require Claude Code 2.1.271+ for `omitClaudeMd`. Use the plugin's
+`tao:independent-reviewer` as a non-fork background subagent with that field enabled.
+It is ignored for a top-level `--agent` session. Verify snapshot access with the
+host's existing permissions; background permission prompts are denied.
+<!-- /target -->
+<!-- target:codex -->
+Inspect the spawn tool schema and explicitly disable conversation inheritance:
+`fork_turns: "none"` or `fork_context: false`, only where supported. These flags
+alone do not exclude automatically injected author `AGENTS.md`. A client that
+cannot suppress those instructions is unsupported and must report `incomplete`.
+<!-- /target -->
+<!-- target:generic -->
+Require a host mechanism that explicitly disables conversation inheritance and
+automatically loaded author instructions, runs in the background, and delivers
+completion in the current session. Skills alone cannot supply those capabilities.
+<!-- /target -->
+
 ## Prepare an isolated snapshot
 
 Read [scripts/prepare_review.py](scripts/prepare_review.py) for its CLI, then run
-it once per review scope after push success. It requires Python 3.11+ and Git 2.32+:
+it once per review scope after push success and capability checks. It requires
+Python 3.11+ and Git 2.46+ (to disable lazy object fetching):
 
 ```text
-python3 <skill-directory>/scripts/prepare_review.py --repo <source-repository> --base <full-base-sha> --head <full-pushed-sha>
+python3 <skill-directory>/scripts/prepare_review.py --repo <source-repository> --snapshot-parent <permitted-parent> --base <full-base-sha> --head <full-pushed-sha>
 ```
 
 For a new ref with no target baseline, replace `--base <sha>` with `--root`. Never
@@ -68,10 +101,16 @@ the helper reports the remaining path without hiding the setup error. It neither
 pushes nor launches a model. Add remote/ref
 identity and baseline provenance to the task message; its output alone is not
 proof of a successful push. Missing commits or setup failure mean `incomplete`.
+All reachable Git objects for the pinned commits must already exist locally.
+Partial clones with missing objects fail before creating a snapshot; the helper
+does not hydrate them from a remote. Materializing objects is separate authorized
+work, not an automatic review fallback.
 
 Keep the original working tree untouched, even if it is dirty. Retain the
 snapshot until the reviewer stops. Then remove only the temporary directory
 created by the script; never remove a user workspace or clean an active review.
+If task startup or access verification fails, remove the unused snapshot and
+report `incomplete`.
 Do not fetch submodules or Git LFS content implicitly. If missing content prevents
 reviewing affected behavior, state the gap and return `incomplete`.
 
@@ -88,39 +127,9 @@ prior conclusions, or claims that tests passed. Do not reuse an agent or memory
 from implementation or a previous review. Let the reviewer collect test evidence.
 Do not substitute a fork of the author conversation for a fresh context.
 
-Verify that the host's existing permissions allow the reviewer to read and run
-commands in the temporary snapshot. Do not change permissions to enable access.
-If access is denied, return `incomplete`; never fall back to the author's checkout.
-
-Verify that the host excludes automatically loaded instruction files from the
-author's workspace before the reviewer reads rules from the pinned snapshot.
-This also applies to skills-only installations; if exclusion cannot be verified,
-report `incomplete` rather than starting an ordinary subagent.
-
-<!-- target:claude -->
-Require Claude Code 2.1.271+ for `omitClaudeMd`. Use the plugin's
-`tao:independent-reviewer` agent as a non-fork background task with that field
-enabled, excluding the author's working-tree instruction files. Pass the reference
-path and scope in its task message.
-Do not use a conversation fork or resume an implementation agent.
-<!-- /target -->
-<!-- target:codex -->
-Use a fresh background subagent with conversation inheritance disabled. Where
-the spawn tool exposes `fork_turns`, explicitly set it to `"none"`; where it
-exposes `fork_context`, explicitly set it to `false`. Inspect the available tool
-schema rather than passing unsupported parameters. A separate context window
-alone does not establish that the parent conversation was excluded.
-<!-- /target -->
-<!-- target:generic -->
-Use the host's fresh-context background delegation mechanism and explicitly
-disable parent conversation inheritance. Verify those capabilities before
-starting; a separate context window alone does not establish independence.
-<!-- /target -->
-
-If fresh context, background execution, or completion delivery is unavailable,
-report `incomplete` and the missing capability. Do not run a blocking review or
-launch an unmanaged process as a silent fallback. Use the session's model by
-default. Do not expand permissions or spawn additional reviewers.
+Verify access to the created snapshot. If denied, return `incomplete`; never fall
+back to the author's checkout. Use the session's model by default. Do not reuse
+an implementation agent or spawn additional reviewers.
 
 Track each task with its remote/ref, base, head, and snapshot path. Announce that
 review is running, then continue the user's work without waiting for it. Review

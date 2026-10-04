@@ -138,20 +138,30 @@ SHA, retaining the base for the full diff. It leaves dirty author files alone an
 does not launch a model or access the remote. It excludes inherited Git settings
 and content filters, disables hooks and external attributes, accepts repository
 subdirectories, and supports `--root` to review a new standalone history against
-an empty tree. Git 2.32+ must be installed. Existing system/global `safe.directory`
-entries are preserved for source discovery; other settings are excluded. If setup
+an empty tree. Git 2.46+ must be installed to disable lazy object fetching.
+Existing system/global `safe.directory` entries are preserved for source discovery;
+other settings are excluded. If setup
 cleanup fails, the error includes the remaining temporary directory's path.
 Dependencies, submodule contents, and LFS objects are not installed or fetched
-for the reviewer.
+for the reviewer. All reachable Git objects must already be local; partial clones
+with missing objects report `incomplete` without fetching or creating a snapshot.
+Use `--snapshot-parent <directory>` to choose an existing permitted directory
+outside the author's working tree. For a new branch, pin its unique merge-base
+with the intended target branch, so independently added target changes do not
+appear as deletions in the review. Existing and force updates retain the old ref
+SHA as their baseline.
 
 The Claude Code plugin includes a background reviewer agent and requires Claude
 Code 2.1.271+ to exclude the author's instruction files with `omitClaudeMd`. A
 skills-only Claude installation needs a reviewer that also excludes those files;
-otherwise review is reported as `incomplete`. Codex and generic
-installations use their host's delegation tools with parent conversation
-inheritance explicitly disabled. Every installation must verify that the host
-excludes automatically loaded author workspace instructions before the reviewer
-reads the snapshot's rules; otherwise review is `incomplete`.
+otherwise review is reported as `incomplete`. This release conditionally supports
+Claude Code hosts with snapshot access under existing permissions. Codex clients
+that automatically inject the author's `AGENTS.md` even with conversation
+inheritance disabled are unsupported; the Codex host used during development has
+that limitation. Generic installations require a host with both forms of context
+exclusion. Skills alone cannot provide these runtime capabilities. Every
+installation checks context exclusion, background completion, and permission to
+use a snapshot parent before creating a snapshot; failure reports `incomplete`.
 The skill checks the available tool schema;
 it does not assume every client has the same spawning parameters. See the official
 [Claude Code subagent documentation](https://code.claude.com/docs/en/sub-agents)
@@ -159,6 +169,12 @@ and [Codex subagent documentation](https://learn.chatgpt.com/docs/agent-configur
 
 This version needs fresh-context background execution and completion delivery in
 the current session, with existing permission to access the temporary snapshot.
+Claude background tasks deny permission prompts, so a version check or directory
+read access alone does not establish permission to run Git checks. The Claude
+host tested during development also returned `incomplete` because Bash was not
+already permitted. `omitClaudeMd` applies to a subagent, not a top-level `--agent`
+session. See the [live host checks](docs/independent-review-host-check.md) for
+the tested behavior and its limits.
 If those are unavailable, it reports `incomplete` rather than
 running a foreground review. It does not guarantee execution or notification after
 the session closes. The SessionStart hook supplies a workflow instruction, not a

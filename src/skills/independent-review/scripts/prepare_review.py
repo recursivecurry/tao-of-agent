@@ -1,5 +1,7 @@
 """Create an isolated checkout for a pushed commit and its review baseline."""
 
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -11,7 +13,20 @@ import tempfile
 from pathlib import Path
 
 COMMIT_SHA = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
-MINIMUM_GIT_VERSION = (2, 32)
+MINIMUM_GIT_VERSION = (2, 46)
+MINIMUM_PYTHON_VERSION = (3, 11)
+
+
+def git_environment(*, isolate_config: bool = True) -> dict[str, str]:
+    environment = {
+        name: value for name, value in os.environ.items() if not name.startswith("GIT_")
+    }
+    environment.update(
+        GIT_ATTR_NOSYSTEM="1", GIT_LFS_SKIP_SMUDGE="1", GIT_NO_LAZY_FETCH="1"
+    )
+    if isolate_config:
+        environment.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
+    return environment
 
 
 def git(
@@ -20,15 +35,6 @@ def git(
     input_text: str | None = None,
     safe_directories: tuple[str, ...] = (),
 ) -> str:
-    environment = {
-        name: value for name, value in os.environ.items() if not name.startswith("GIT_")
-    }
-    environment.update(
-        GIT_CONFIG_NOSYSTEM="1",
-        GIT_CONFIG_GLOBAL=os.devnull,
-        GIT_ATTR_NOSYSTEM="1",
-        GIT_LFS_SKIP_SMUDGE="1",
-    )
     command = [
         "git",
         "-c",
@@ -44,7 +50,7 @@ def git(
         command.extend(("-c", f"safe.directory={trusted}"))
     result = subprocess.run(
         [*command, "-C", str(directory), *arguments],
-        env=environment,
+        env=git_environment(),
         input=input_text,
         check=True,
         capture_output=True,
@@ -54,47 +60,53 @@ def git(
 
 
 def trusted_directories(repo: Path) -> tuple[str, ...]:
-    environment = {
-        name: value for name, value in os.environ.items() if not name.startswith("GIT_")
-    }
-    directories = []
-    for scope in ("--system", "--global"):
-        result = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(repo),
-                "config",
-                scope,
-                "--includes",
-                "--null",
-                "--get-all",
-                "safe.directory",
-            ],
-            env=environment,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 1:
-            continue
-        result.check_returncode()
-        directories.extend(result.stdout.removesuffix("\0").split("\0"))
-    return tuple(directories)
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "config",
+            "--includes",
+            "--null",
+            "--show-scope",
+            "--get-all",
+            "safe.directory",
+        ],
+        env=git_environment(isolate_config=False),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 1:
+        return ()
+    result.check_returncode()
+    fields = result.stdout.removesuffix("\0").split("\0")
+    return tuple(
+        value
+        for scope, value in zip(fields[::2], fields[1::2], strict=True)
+        if scope in ("system", "global")
+    )
 
 
 def commit_sha(value: str) -> str:
     if COMMIT_SHA.fullmatch(value) is None:
-        raise argparse.ArgumentTypeError("expected a full lowercase commit SHA")
+        raise ValueError("expected a full lowercase commit SHA")
     return value
 
 
-def prepare_review(repo: Path, base: str | None, head: str) -> dict[str, str]:
+def prepare_review(
+    repo: Path, base: str | None, head: str, *, snapshot_parent: Path | None = None
+) -> dict[str, str]:
+    if sys.version_info[:2] < MINIMUM_PYTHON_VERSION:
+        raise ValueError("Python 3.11+ is required")
+    commits = [head] if base is None else [base, head]
+    for sha in commits:
+        commit_sha(sha)
     repo = repo.resolve(strict=True)
     version = git(repo, "--version")
     match = re.match(r"git version (\d+)\.(\d+)", version)
     if match is None or tuple(map(int, match.groups())) < MINIMUM_GIT_VERSION:
-        raise ValueError(f"Git 2.32+ is required; found {version}")
+        raise ValueError(f"Git 2.46+ is required; found {version}")
     repo = Path(
         git(
             repo,
@@ -104,16 +116,31 @@ def prepare_review(repo: Path, base: str | None, head: str) -> dict[str, str]:
         )
     )
     trusted = (str(repo),)
-    commits = [head] if base is None else [base, head]
     for sha in commits:
-        commit_sha(sha)
         if git(repo, "cat-file", "-t", sha, safe_directories=trusted) != "commit":
             raise ValueError(f"{sha} is not a commit")
 
+    objects = git(
+        repo,
+        "rev-list",
+        "--objects",
+        "--missing=print",
+        *commits,
+        safe_directories=trusted,
+    )
+    if any(line.startswith("?") for line in objects.splitlines()):
+        raise ValueError(
+            "source repository has missing Git objects; materialize partial-clone "
+            "objects separately before review (no remote objects were fetched)"
+        )
     object_format = git(
         repo, "rev-parse", "--show-object-format", safe_directories=trusted
     )
-    snapshot = Path(tempfile.mkdtemp(prefix="tao-independent-review-"))
+    if snapshot_parent is not None:
+        snapshot_parent = snapshot_parent.resolve(strict=True)
+    snapshot = Path(
+        tempfile.mkdtemp(prefix="tao-independent-review-", dir=snapshot_parent)
+    )
     try:
         git(snapshot, "init", "--quiet", f"--object-format={object_format}")
         git(snapshot, "config", "core.hooksPath", os.devnull)
@@ -153,6 +180,11 @@ def prepare_review(repo: Path, base: str | None, head: str) -> dict[str, str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", required=True, type=Path)
+    parser.add_argument(
+        "--snapshot-parent",
+        type=Path,
+        help="existing directory already accessible to the background reviewer",
+    )
     baseline = parser.add_mutually_exclusive_group(required=True)
     baseline.add_argument("--base", type=commit_sha)
     baseline.add_argument(
@@ -161,7 +193,12 @@ def main() -> int:
     parser.add_argument("--head", required=True, type=commit_sha)
     arguments = parser.parse_args()
     try:
-        snapshot = prepare_review(arguments.repo, arguments.base, arguments.head)
+        snapshot = prepare_review(
+            arguments.repo,
+            arguments.base,
+            arguments.head,
+            snapshot_parent=arguments.snapshot_parent,
+        )
     except subprocess.CalledProcessError as error:
         print(f"prepare_review: {error.stderr.strip()}", file=sys.stderr)
         return 1

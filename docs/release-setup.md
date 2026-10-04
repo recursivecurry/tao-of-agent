@@ -82,11 +82,16 @@ the Claude Code plugin registers `tao:independent-reviewer`. Use Claude Code
 2.1.271 or later for `omitClaudeMd`. In a live session, push a small authorized
 change and verify that a non-fork reviewer can read the temporary snapshot, run
 permitted checks, and deliver its result while the main session continues. Check
-that only the pinned snapshot's project rules reach the reviewer. Repeat the
-background execution and completion check in the target Codex client. If existing
-permissions prevent snapshot access, expect `incomplete` without a foreground
-fallback or a change to permissions. Offline evals and plugin manifest validation
-do not establish those runtime properties.
+that only the pinned snapshot's project rules reach the reviewer. Check existing
+permission for the reviewer instructions path and Git commands as well as file
+reads. See [live host checks](independent-review-host-check.md): context exclusion
+and background delivery were exercised, but the tested Claude host denied Bash.
+This release does not claim a successful full review on that configuration.
+Repeat these checks before supporting another Claude or Codex client. A Codex
+client that cannot suppress the author's automatic `AGENTS.md` is unsupported.
+If preflight fails, expect `incomplete` before snapshot creation, without a
+foreground fallback or permission changes. Offline evals and plugin manifest
+validation do not establish those runtime properties.
 
 If the build pull request fails the `version` check, the source change did not raise the
 version. Raise it in both manifests in a new pull request. The build pull request updates

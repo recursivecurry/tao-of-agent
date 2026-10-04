@@ -11,8 +11,9 @@ Verify the snapshot's `HEAD` matches the supplied head SHA before reviewing. Use
 `git log --format=%H <base>..<head>` to identify newly reachable commits. For an
 explicit `empty-tree` baseline, verify the base is an empty tree and use
 `git log --format=%H <head>` to inspect all reachable commits; a tree is not a
-revision range endpoint. Do not
-substitute a three-dot diff, merge-base, latest `HEAD`, or last-commit diff.
+revision range endpoint. A new branch's supplied baseline may already be its
+verified fork point. Do not recompute it or substitute a three-dot diff,
+merge-base, latest `HEAD`, or last-commit diff.
 Inspect surrounding code, callers, and tests needed to assess the changed behavior.
 
 Independently verify correctness. Seek concrete counterexamples to the stated
