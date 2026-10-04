@@ -1,5 +1,7 @@
 # tao-of-agent
 
+[한국어](README.ko.md)
+
 Agent skills following the [Vercel agent skills](https://vercel.com/docs/agent-resources/skills)
 format. Each skill is a directory under `skills/` with a `SKILL.md`.
 

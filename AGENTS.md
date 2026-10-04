@@ -10,6 +10,7 @@ generic skills installed with `npx skills`. The README describes the layout.
   `python3 tools/build.py build`.
 - A skill lives in `src/skills/<name>/`. Files that both plugins need go in `src/plugin/`.
   Files for one agent go in `src/claude/` or `src/codex/`.
+- `README.ko.md` is the Korean translation of `README.md`. Change both together.
 
 ## Writing a skill
 
