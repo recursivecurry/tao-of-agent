@@ -79,6 +79,7 @@ Claude Code에서는 스크립트와 참조 파일을 포함한 스킬 디렉터
 
 ```bash
 cp -r skills/minimal-code ~/.claude/skills/
+cp -r skills/independent-review ~/.claude/skills/
 cp -r skills/natural-clear-writing ~/.claude/skills/
 ```
 
@@ -134,16 +135,21 @@ writing or editing prose, docs, commit messages, or UI strings.
 
 포함된 Python 3.11 이상용 보조 스크립트는 푸시한 SHA의 독립적인 Git checkout을 만들고,
 전체 diff를 비교할 기준 커밋도 보존합니다. 작성자의 미완성 파일을 건드리지 않고, 모델을
-실행하거나 원격 저장소에 접근하지 않습니다. Git이 설치되어 있어야 합니다. 리뷰를 위해
+실행하거나 원격 저장소에 접근하지 않습니다. Git이 설치되어 있어야 합니다.
+상속된 Git 설정과 내용 변환 필터를 제외하며, 저장소 하위 디렉터리도 입력으로 받습니다.
+독립된 새 이력은 `--root`로 빈 트리와 비교할 수 있습니다. 리뷰를 위해
 의존성을 설치하거나 submodule 내용 및 LFS 객체를 가져오지는 않습니다.
 
-Claude Code 플러그인에는 백그라운드 리뷰어 에이전트가 포함됩니다. Codex와 일반 설치에서는
+Claude Code 플러그인에는 백그라운드 리뷰어 에이전트가 포함됩니다. `omitClaudeMd`로 작성자의
+지침 파일을 제외하려면 Claude Code 2.1.271 이상이 필요합니다. 스킬만 설치한 Claude 환경에서도
+그 파일을 제외하는 리뷰어가 필요하며, 없으면 `incomplete`로 보고합니다. Codex와 일반 설치에서는
 호스트의 위임 도구를 사용하고 부모 대화 상속을 명시적으로 끕니다. 스킬은 사용 가능한 도구의
 스키마를 확인하며, 모든 클라이언트가 같은 실행 인자를 제공한다고 가정하지 않습니다. 공식
 [Claude Code subagent 문서](https://code.claude.com/docs/en/sub-agents)와
 [Codex subagent 문서](https://learn.chatgpt.com/docs/agent-configuration/subagents)를 참조하세요.
 
-이 버전은 현재 세션에서 독립된 컨텍스트의 백그라운드 실행과 완료 결과 전달을 지원해야 합니다.
+이 버전은 현재 세션에서 독립된 컨텍스트의 백그라운드 실행과 완료 결과 전달을 지원해야 하며,
+기존 권한으로 임시 snapshot에 접근할 수 있어야 합니다.
 지원하지 않으면 전면에서 리뷰를 실행하는 대신 `incomplete`로 보고합니다. 세션 종료 후 실행이나
 알림은 보장하지 않습니다. SessionStart hook은 작업 지침을 넣으며 Git 푸시를 가로채지는
 않습니다. 에이전트 세션 밖에서 수행한 푸시는 감시하지 않습니다.
@@ -167,6 +173,10 @@ independent-review의 평가 케이스는 근거가 있는 결함, 결함이 없
 기능이 없는 환경을 다룹니다. 오프라인 동작 평가이므로 실제 위임이나 알림 기능이 동작한다는
 증거는 아닙니다. `tools/test_independent_review.py`는 실제 임시 Git 저장소에서 보조 스크립트를
 검증하며, 여러 커밋의 변경과 강제 업데이트도 포함합니다.
+
+설치 검사는 `python3 tools/build.py stage <directory>`로 `src/`의 임시 복사본을 빌드합니다.
+호출한 작업 폴더의 생성 파일은 수정하지 않으므로, 로컬 편집 내용과 오래된 배포 파일도 그대로
+보존합니다.
 
 ```bash
 tools/eval.sh --judge-model sonnet

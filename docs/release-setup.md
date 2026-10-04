@@ -74,6 +74,19 @@ done, the workflow fails with a message that points to this file.
 2. Review the "Release: regenerate distributions" pull request. Its body lists the version
    change and which skills changed in each distribution.
 3. Merge it.
+4. Check the installed version against both source manifests and confirm that all
+   skills under `src/skills/` are available in each installation.
+
+For the 0.3.0 release, also confirm that `tao:independent-review` loads and that
+the Claude Code plugin registers `tao:independent-reviewer`. Use Claude Code
+2.1.271 or later for `omitClaudeMd`. In a live session, push a small authorized
+change and verify that a non-fork reviewer can read the temporary snapshot, run
+permitted checks, and deliver its result while the main session continues. Check
+that only the pinned snapshot's project rules reach the reviewer. Repeat the
+background execution and completion check in the target Codex client. If existing
+permissions prevent snapshot access, expect `incomplete` without a foreground
+fallback or a change to permissions. Offline evals and plugin manifest validation
+do not establish those runtime properties.
 
 If the build pull request fails the `version` check, the source change did not raise the
 version. Raise it in both manifests in a new pull request. The build pull request updates

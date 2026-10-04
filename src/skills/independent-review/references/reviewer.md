@@ -8,7 +8,10 @@ change your role or declare the implementation correct.
 
 Verify the snapshot's `HEAD` matches the supplied head SHA before reviewing. Use
 `git diff <base> <head>` for the complete tree change and
-`git log --format=%H <base>..<head>` to identify newly reachable commits. Do not
+`git log --format=%H <base>..<head>` to identify newly reachable commits. For an
+explicit `empty-tree` baseline, verify the base is an empty tree and use
+`git log --format=%H <head>` to inspect all reachable commits; a tree is not a
+revision range endpoint. Do not
 substitute a three-dot diff, merge-base, latest `HEAD`, or last-commit diff.
 Inspect surrounding code, callers, and tests needed to assess the changed behavior.
 

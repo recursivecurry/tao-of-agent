@@ -1,4 +1,4 @@
-"""Create an isolated review checkout from two full commit SHAs."""
+"""Create an isolated checkout for a pushed commit and its review baseline."""
 
 import argparse
 import json
@@ -11,24 +11,22 @@ import tempfile
 from pathlib import Path
 
 COMMIT_SHA = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
-GIT_LOCATION_VARIABLES = (
-    "GIT_DIR",
-    "GIT_WORK_TREE",
-    "GIT_COMMON_DIR",
-    "GIT_INDEX_FILE",
-    "GIT_OBJECT_DIRECTORY",
-    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-)
 
 
-def git(directory: Path, *arguments: str) -> str:
-    environment = os.environ.copy()
-    for name in GIT_LOCATION_VARIABLES:
-        environment.pop(name, None)
-    environment["GIT_LFS_SKIP_SMUDGE"] = "1"
+def git(directory: Path, *arguments: str, input_text: str | None = None) -> str:
+    environment = {
+        name: value for name, value in os.environ.items() if not name.startswith("GIT_")
+    }
+    environment.update(
+        GIT_CONFIG_NOSYSTEM="1",
+        GIT_CONFIG_GLOBAL=os.devnull,
+        GIT_ATTR_NOSYSTEM="1",
+        GIT_LFS_SKIP_SMUDGE="1",
+    )
     result = subprocess.run(
-        ["git", "-C", str(directory), *arguments],
+        ["git", "-c", "protocol.version=2", "-C", str(directory), *arguments],
         env=environment,
+        input=input_text,
         check=True,
         capture_output=True,
         text=True,
@@ -42,9 +40,11 @@ def commit_sha(value: str) -> str:
     return value
 
 
-def prepare_review(repo: Path, base: str, head: str) -> dict[str, str]:
+def prepare_review(repo: Path, base: str | None, head: str) -> dict[str, str]:
     repo = repo.resolve(strict=True)
-    for sha in (base, head):
+    repo = Path(git(repo, "rev-parse", "--absolute-git-dir"))
+    commits = [head] if base is None else [base, head]
+    for sha in commits:
         commit_sha(sha)
         if git(repo, "cat-file", "-t", sha) != "commit":
             raise ValueError(f"{sha} is not a commit")
@@ -56,24 +56,31 @@ def prepare_review(repo: Path, base: str, head: str) -> dict[str, str]:
         git(snapshot, "config", "core.hooksPath", str(snapshot / "disabled-hooks"))
         git(snapshot, "config", "core.autocrlf", "false")
         git(snapshot, "config", "core.fsmonitor", "false")
-        git(snapshot, "config", "filter.lfs.smudge", "")
-        git(snapshot, "config", "filter.lfs.process", "")
-        git(snapshot, "config", "filter.lfs.required", "false")
-        git(snapshot, "fetch", "--quiet", "--no-tags", str(repo), base, head)
+        git(snapshot, "fetch", "--quiet", "--no-tags", str(repo), *commits)
         git(snapshot, "checkout", "--quiet", "--detach", head)
         if git(snapshot, "rev-parse", "HEAD") != head:
             raise ValueError("snapshot HEAD does not match the requested commit")
+        base_sha = base if base is not None else git(snapshot, "mktree", input_text="")
     except (OSError, subprocess.CalledProcessError, ValueError):
         shutil.rmtree(snapshot)
         raise
 
-    return {"directory": str(snapshot), "base_sha": base, "head_sha": head}
+    return {
+        "directory": str(snapshot),
+        "base_sha": base_sha,
+        "head_sha": head,
+        "baseline_kind": "commit" if base is not None else "empty-tree",
+    }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", required=True, type=Path)
-    parser.add_argument("--base", required=True, type=commit_sha)
+    baseline = parser.add_mutually_exclusive_group(required=True)
+    baseline.add_argument("--base", type=commit_sha)
+    baseline.add_argument(
+        "--root", action="store_true", help="review from an empty tree"
+    )
     parser.add_argument("--head", required=True, type=commit_sha)
     arguments = parser.parse_args()
     try:

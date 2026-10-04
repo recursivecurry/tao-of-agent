@@ -31,7 +31,9 @@ and deleted refs, and report why a deletion has no code snapshot to review.
   Include every commit introduced by the update, not just the last commit.
 - New branch: record that the old ref was absent. Choose a justified baseline
   from the intended target branch, pin its SHA, and explain that choice in the
-  report. Do not invent an old SHA or silently review only the latest commit.
+  report. For an empty remote or a standalone orphan history with no target
+  baseline, use an explicit empty-tree baseline and inspect all reachable commits.
+  Do not invent an old SHA or silently review only the latest commit.
 - Force update: compare the old and new trees directly; include the newly
   reachable commits. Do not replace the old SHA with a merge-base.
 - Multiple refs: track each update separately. Review commit-bearing tags by
@@ -50,11 +52,18 @@ it once per review scope after push success. It requires Python 3.11+ and Git:
 python3 <skill-directory>/scripts/prepare_review.py --repo <source-repository> --base <full-base-sha> --head <full-pushed-sha>
 ```
 
+For a new ref with no target baseline, replace `--base <sha>` with `--root`. Never
+use root mode to hide a missing old SHA for an existing ref.
+
 The script creates a standalone temporary Git repository at the pinned head,
 retains the base for comparison, and prints JSON with `directory`, `base_sha`,
-and `head_sha`. It neither pushes nor launches a model. Add remote/ref identity
-and baseline provenance to the task message; its output alone is not proof of a
-successful push. Missing commits or setup failure mean `incomplete`.
+`head_sha`, and `baseline_kind` (`commit` or `empty-tree`). Root mode creates the
+empty tree in the snapshot's object format. The helper accepts a repository root,
+subdirectory, linked worktree, or bare repository. Its Git commands exclude
+inherited Git environment and global/system settings; external content filters
+do not run during checkout. It neither pushes nor launches a model. Add remote/ref
+identity and baseline provenance to the task message; its output alone is not
+proof of a successful push. Missing commits or setup failure mean `incomplete`.
 
 Keep the original working tree untouched, even if it is dirty. Retain the
 snapshot until the reviewer stops. Then remove only the temporary directory
@@ -75,11 +84,17 @@ prior conclusions, or claims that tests passed. Do not reuse an agent or memory
 from implementation or a previous review. Let the reviewer collect test evidence.
 Do not substitute a fork of the author conversation for a fresh context.
 
+Verify that the host's existing permissions allow the reviewer to read and run
+commands in the temporary snapshot. Do not change permissions to enable access.
+If access is denied, return `incomplete`; never fall back to the author's checkout.
+
 <!-- target:claude -->
-Use the plugin's `tao:independent-reviewer` agent as a non-fork background task.
-Pass the reference path and scope in its task message. If only this skill was
-installed, use a fresh general-purpose reviewer with the same instructions. Do
-not use a conversation fork or resume an implementation agent.
+Require Claude Code 2.1.271+ for `omitClaudeMd`. Use the plugin's
+`tao:independent-reviewer` agent as a non-fork background task with that field
+enabled, excluding the author's working-tree instruction files. Pass the reference
+path and scope in its task message. In a skills-only installation, use a fresh
+reviewer only if it also suppresses those files; otherwise report `incomplete`.
+Do not use a conversation fork or resume an implementation agent.
 <!-- /target -->
 <!-- target:codex -->
 Use a fresh background subagent with conversation inheritance disabled. Where

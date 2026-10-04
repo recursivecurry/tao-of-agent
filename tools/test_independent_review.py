@@ -47,11 +47,18 @@ class PrepareReviewTest(unittest.TestCase):
         git(self.repo, "commit", "--quiet", "-m", "Update code")
         return git(self.repo, "rev-parse", "HEAD")
 
-    def snapshot(self, base: str, head: str) -> Path:
+    def snapshot(self, base: str | None, head: str) -> Path:
         result = prepare_review.prepare_review(self.repo, base, head)
         snapshot = Path(result["directory"])
         self.addCleanup(shutil.rmtree, snapshot)
-        self.assertEqual(result["base_sha"], base)
+        if base is None:
+            self.assertEqual(result["baseline_kind"], "empty-tree")
+            self.assertEqual(
+                git(snapshot, "cat-file", "-t", result["base_sha"]), "tree"
+            )
+        else:
+            self.assertEqual(result["base_sha"], base)
+            self.assertEqual(result["baseline_kind"], "commit")
         self.assertEqual(result["head_sha"], head)
         return snapshot
 
@@ -88,6 +95,69 @@ class PrepareReviewTest(unittest.TestCase):
         self.assertIn("-pushed", diff)
         self.assertIn("+replacement", diff)
         self.assertEqual(git(snapshot, "show", f"{self.head}:code.txt"), "pushed")
+
+    def test_fetches_unadvertised_force_update_base_with_old_protocol_config(
+        self,
+    ) -> None:
+        git(self.repo, "reset", "--hard", self.base)
+        replacement = self.commit("replacement\n")
+        for version in ("0", "1"):
+            with self.subTest(version=version):
+                git(self.repo, "config", "protocol.version", version)
+                config = Path(self.temporary.name) / "protocol-config"
+                config.write_text(f"[protocol]\n version = {version}\n")
+                with patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": str(config)}):
+                    snapshot = self.snapshot(self.head, replacement)
+                self.assertEqual(
+                    git(snapshot, "show", f"{self.head}:code.txt"), "pushed"
+                )
+
+    def test_accepts_a_repository_subdirectory(self) -> None:
+        subdirectory = self.repo / "nested"
+        subdirectory.mkdir()
+        self.repo = subdirectory
+        snapshot = self.snapshot(self.base, self.head)
+        self.assertEqual((snapshot / "code.txt").read_text(), "pushed\n")
+
+    def test_accepts_a_bare_repository(self) -> None:
+        bare = Path(self.temporary.name) / "bare.git"
+        subprocess.run(
+            ["git", "clone", "--quiet", "--bare", str(self.repo), str(bare)],
+            check=True,
+            capture_output=True,
+        )
+        self.repo = bare
+        snapshot = self.snapshot(self.base, self.head)
+        self.assertEqual((snapshot / "code.txt").read_text(), "pushed\n")
+
+    def test_accepts_a_linked_worktree_subdirectory(self) -> None:
+        worktree = Path(self.temporary.name) / "linked-worktree"
+        git(
+            self.repo,
+            "worktree",
+            "add",
+            "--quiet",
+            "--detach",
+            str(worktree),
+            self.head,
+        )
+        subdirectory = worktree / "nested"
+        subdirectory.mkdir()
+        self.repo = subdirectory
+        snapshot = self.snapshot(self.base, self.head)
+        self.assertEqual((snapshot / "code.txt").read_text(), "pushed\n")
+
+    def test_reviews_all_files_and_commits_without_a_baseline_commit(self) -> None:
+        result = prepare_review.prepare_review(self.repo, None, self.head)
+        snapshot = Path(result["directory"])
+        self.addCleanup(shutil.rmtree, snapshot)
+        self.assertEqual(result["baseline_kind"], "empty-tree")
+        self.assertEqual(git(snapshot, "ls-tree", result["base_sha"]), "")
+        self.assertIn("+pushed", git(snapshot, "diff", result["base_sha"], self.head))
+        self.assertEqual(
+            git(snapshot, "log", "--format=%H", self.head).splitlines(),
+            [self.head, self.middle, self.base],
+        )
 
     def test_preserves_sha256_repository_format(self) -> None:
         self.repo = Path(self.temporary.name) / "sha256-author"
@@ -127,6 +197,49 @@ class PrepareReviewTest(unittest.TestCase):
         with patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": str(config)}):
             snapshot = self.snapshot(self.base, head)
         self.assertEqual((snapshot / "code.txt").read_text(), committed_content)
+
+    def test_ignores_system_and_global_non_lfs_filters(self) -> None:
+        (self.repo / ".gitattributes").write_text("*.txt filter=custom\n")
+        git(self.repo, "add", ".gitattributes")
+        head = self.commit("raw content\n")
+        config = Path(self.temporary.name) / "filter-config"
+        config.write_text(
+            '[filter "custom"]\n'
+            '    smudge = "exit 1"\n'
+            '    process = "exit 1"\n'
+            "    required = true\n"
+        )
+        with patch.dict(
+            os.environ,
+            {"GIT_CONFIG_GLOBAL": str(config), "GIT_CONFIG_SYSTEM": str(config)},
+        ):
+            snapshot = self.snapshot(self.base, head)
+        self.assertEqual((snapshot / "code.txt").read_text(), "raw content\n")
+
+    def test_ignores_inherited_command_config_and_repository_discovery_settings(
+        self,
+    ) -> None:
+        hooks = Path(self.temporary.name) / "hooks"
+        hooks.mkdir()
+        marker = Path(self.temporary.name) / "hook-ran"
+        hook = hooks / "post-checkout"
+        hook.write_text(f'#!/bin/sh\nprintf ran > "{marker}"\n')
+        hook.chmod(0o755)
+        injections = (
+            {"GIT_CONFIG_PARAMETERS": f"'core.hooksPath={hooks}'"},
+            {
+                "GIT_CONFIG_COUNT": "1",
+                "GIT_CONFIG_KEY_0": "core.hooksPath",
+                "GIT_CONFIG_VALUE_0": str(hooks),
+            },
+            {"GIT_NAMESPACE": "unrelated", "GIT_CEILING_DIRECTORIES": str(self.repo)},
+        )
+        for injection in injections:
+            with self.subTest(injection=injection):
+                with patch.dict(os.environ, injection):
+                    snapshot = self.snapshot(self.base, self.head)
+                self.assertFalse(marker.exists())
+                self.assertEqual((snapshot / "code.txt").read_text(), "pushed\n")
 
     def test_cli_emits_scope_and_snapshot_json(self) -> None:
         result = subprocess.run(
@@ -170,6 +283,47 @@ class PrepareReviewTest(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertEqual(result.stdout, "")
                 self.assertTrue(result.stderr)
+
+    def test_cli_requires_exactly_one_baseline_mode(self) -> None:
+        for baseline in ([], ["--base", self.base, "--root"]):
+            with self.subTest(baseline=baseline):
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        str(SCRIPT),
+                        "--repo",
+                        str(self.repo),
+                        "--head",
+                        self.head,
+                        *baseline,
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(result.stdout, "")
+
+    def test_cli_root_mode(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--repo",
+                str(self.repo),
+                "--head",
+                self.head,
+                "--root",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        output = json.loads(result.stdout)
+        snapshot = Path(output["directory"])
+        self.addCleanup(shutil.rmtree, snapshot)
+        self.assertEqual(output["baseline_kind"], "empty-tree")
+        self.assertEqual(git(snapshot, "ls-tree", output["base_sha"]), "")
 
     def test_rejects_non_commit_objects(self) -> None:
         blob = git(self.repo, "rev-parse", f"{self.head}:code.txt")

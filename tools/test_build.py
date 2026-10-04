@@ -81,6 +81,29 @@ class SourceTreeCase(unittest.TestCase):
         return stdout
 
 
+class StageTest(SourceTreeCase):
+    def test_builds_a_source_copy_without_touching_existing_outputs(self) -> None:
+        write(self.root, "skills/old/SKILL.md", "user edits\n")
+        write(self.root, "plugins/old/private.txt", "keep\n")
+        before = snapshot(self.root)
+        with tempfile.TemporaryDirectory() as temporary:
+            staged = Path(temporary)
+            self.assertEqual(run(build.stage, self.root, staged)[0], 0)
+            self.assertEqual(snapshot(self.root), before)
+            self.assertEqual(run(build.check, staged)[0], 0)
+            for directory in build.SKILL_ROOTS.values():
+                self.assertIn(
+                    "name: demo", (staged / directory / "demo/SKILL.md").read_text()
+                )
+            self.assertFalse((staged / "plugins/old/private.txt").exists())
+
+    def test_does_not_overwrite_an_existing_source_tree(self) -> None:
+        before = snapshot(self.root)
+        with self.assertRaises(FileExistsError):
+            build.stage(self.root, self.root)
+        self.assertEqual(snapshot(self.root), before)
+
+
 class RenderTest(unittest.TestCase):
     def render(self, text: str, target: str) -> str:
         return build.render_template(text, target, "t.tmpl", notice=False).decode()

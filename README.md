@@ -79,6 +79,7 @@ For Claude Code, copy the complete skill directory, including any scripts and re
 
 ```bash
 cp -r skills/minimal-code ~/.claude/skills/
+cp -r skills/independent-review ~/.claude/skills/
 cp -r skills/natural-clear-writing ~/.claude/skills/
 ```
 
@@ -134,10 +135,16 @@ describes failed execution, missing scope, or a material coverage gap.
 
 The included Python 3.11+ helper creates a standalone Git checkout at the pushed
 SHA, retaining the base for the full diff. It leaves dirty author files alone and
-does not launch a model or access the remote. Git must be installed. Dependencies,
-submodule contents, and LFS objects are not installed or fetched for the reviewer.
+does not launch a model or access the remote. It excludes inherited Git settings
+and content filters, accepts repository subdirectories, and supports `--root`
+to review a new standalone history against an empty tree. Git must be installed.
+Dependencies, submodule contents, and LFS objects are not installed or fetched
+for the reviewer.
 
-The Claude Code plugin includes a background reviewer agent. Codex and generic
+The Claude Code plugin includes a background reviewer agent and requires Claude
+Code 2.1.271+ to exclude the author's instruction files with `omitClaudeMd`. A
+skills-only Claude installation needs a reviewer that also excludes those files;
+otherwise review is reported as `incomplete`. Codex and generic
 installations use their host's delegation tools with parent conversation
 inheritance explicitly disabled. The skill checks the available tool schema;
 it does not assume every client has the same spawning parameters. See the official
@@ -145,7 +152,8 @@ it does not assume every client has the same spawning parameters. See the offici
 and [Codex subagent documentation](https://learn.chatgpt.com/docs/agent-configuration/subagents).
 
 This version needs fresh-context background execution and completion delivery in
-the current session. If those are unavailable, it reports `incomplete` rather than
+the current session, with existing permission to access the temporary snapshot.
+If those are unavailable, it reports `incomplete` rather than
 running a foreground review. It does not guarantee execution or notification after
 the session closes. The SessionStart hook supplies a workflow instruction, not a
 Git push interceptor; pushes made outside the agent session are not monitored.
@@ -170,6 +178,10 @@ without defects, and unavailable background capabilities. These are offline
 behavioral exercises; they do not establish live delegation or notification
 support. `tools/test_independent_review.py` checks the snapshot helper against real
 temporary Git repositories, including multiple commits and force updates.
+
+The installer checks build a temporary copy of `src/` using
+`python3 tools/build.py stage <directory>`. They leave the caller's generated
+files untouched, including local edits and stale distributions.
 
 ```bash
 tools/eval.sh --judge-model sonnet
