@@ -241,7 +241,7 @@ class PrepareReviewTest(unittest.TestCase):
 
     def test_reviews_all_files_and_commits_without_a_baseline_commit(self) -> None:
         snapshot = self.snapshot(None, self.head)
-        empty_tree = git(snapshot, "mktree")
+        empty_tree = git(snapshot, "hash-object", "-t", "tree", os.devnull)
         self.assertEqual(git(snapshot, "ls-tree", empty_tree), "")
         self.assertIn("+pushed", git(snapshot, "diff", empty_tree, self.head))
         self.assertEqual(
