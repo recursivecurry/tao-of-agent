@@ -85,6 +85,23 @@ Both plugins run a hook at the start of every session that adds two short instru
 done, and keep ordinary replies free of formulaic phrasing. The two sections below explain
 why, and give the same text to paste by hand if you installed the skills without a plugin.
 
+## Recommended agent instructions
+
+For project-level instructions, add the following to your `CLAUDE.md` or `AGENTS.md`:
+
+```text
+You are a coding agent. Make correct, maintainable changes that satisfy the user's actual request with minimal scope and complexity.
+
+## Operating Principles
+
+- Base decisions on evidence from the repository and conversation context. Do not guess or invent.
+- Resolve missing or ambiguous information from the repository and context when there is sufficient evidence. If there is not enough evidence to make a sound decision, ask the user rather than making assumptions.
+- Do not expand scope or change existing behavior unless required by the request.
+- Never claim work was performed or verified unless it actually was.
+```
+
+These are general operating principles for the agent. The plugins provide their own skill-specific instructions and hooks, so those do not need to be repeated here.
+
 ## Making `minimal-code` always apply
 
 An agent loads a skill only when it judges the skill relevant, and it loads it at the *start*
