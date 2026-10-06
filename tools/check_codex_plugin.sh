@@ -2,20 +2,16 @@
 # Check that Codex installs the generated plugin and loads its skills.
 #
 # Codex has no validation command, so this installs the plugin from the
-# working tree into a temporary CODEX_HOME. No login is needed: nothing here
+# staged distribution into a temporary CODEX_HOME. No login is needed: nothing here
 # calls a model.
 set -euo pipefail
+# shellcheck source=tools/staging.sh
+source "$(dirname "${BASH_SOURCE[0]}")/staging.sh"
 
 readonly SKILLS_SRC="src/skills"
 readonly PLUGIN_DIR="plugins/codex/tao"
 readonly MARKETPLACE="tao-of-agent"
 readonly PLUGIN="tao"
-
-codex_home=""
-
-remove_codex_home() {
-  [[ -n "$codex_home" ]] && rm -rf "$codex_home"
-}
 
 main() {
   local installed expected loaded
@@ -26,16 +22,17 @@ main() {
     exit 1
   fi
 
-  codex_home="$(mktemp -d)"
-  trap remove_codex_home EXIT
+  stage_distribution
+  codex_home="$stage_dir/codex-home"
+  mkdir "$codex_home"
   export CODEX_HOME="$codex_home"
 
-  codex plugin marketplace add "$PWD" >/dev/null
+  codex plugin marketplace add "$stage_dir" >/dev/null
   codex plugin add "${PLUGIN}@${MARKETPLACE}" >/dev/null
 
   # The cache holds one directory per installed version.
   installed="$(find "${CODEX_HOME}/plugins/cache/${MARKETPLACE}/${PLUGIN}" -mindepth 1 -maxdepth 1 -type d)"
-  if ! diff -r "$PLUGIN_DIR" "$installed" >&2; then
+  if ! diff -r "$stage_dir/$PLUGIN_DIR" "$installed" >&2; then
     echo "check_codex_plugin.sh: the installed plugin differs from ${PLUGIN_DIR}" >&2
     exit 1
   fi

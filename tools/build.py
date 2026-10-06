@@ -6,6 +6,7 @@ import io
 import json
 import posixpath
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -690,6 +691,10 @@ def parse_arguments(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("build", help="write the generated files and delete extras")
+    stage_parser = commands.add_parser(
+        "stage", help="build a copy of src/ in a temporary directory"
+    )
+    stage_parser.add_argument("directory", type=Path)
     commands.add_parser(
         "check", help="fail with a diff if the generated files are stale"
     )
@@ -706,11 +711,18 @@ def parse_arguments(argv: list[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def stage(root: Path, directory: Path) -> int:
+    shutil.copytree(root / "src", directory / "src")
+    return build(directory)
+
+
 def main(argv: list[str] | None = None) -> int:
     arguments = parse_arguments(argv)
     root = Path.cwd()
     commands = {"build": build, "check": check, "lint": lint, "summary": summary}
     try:
+        if arguments.command == "stage":
+            return stage(root, arguments.directory)
         if arguments.command == "version-check":
             return version_check(root, arguments.base)
         return commands[arguments.command](root)
