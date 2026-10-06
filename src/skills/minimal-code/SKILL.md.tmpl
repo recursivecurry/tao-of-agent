@@ -4,7 +4,7 @@ description: Write the smallest correct, readable, maintainable change. Use when
 license: MIT
 metadata:
   author: recursivecurry
-  version: 2.3.0
+  version: 2.3.1
 ---
 
 # Minimal Code
@@ -123,6 +123,13 @@ For bug fixes:
 3. Inspect other callers or shared paths affected by that cause.
 4. Fix the cause at the narrowest correct location.
 5. Add regression coverage when the repository supports it.
+
+Before changing code or tests in response to a failed check:
+
+- Read the full relevant failure log and identify the actual failing command and execution stage. A final error message may come from a later failure.
+- For local/CI differences, compare relevant runtime versions and configuration scopes, and reproduce or isolate the differing condition. Make fixture assumptions explicit instead of relying on inherited settings.
+- Support the root-cause hypothesis with a reproduction or execution trace before fixing it. If a fix fails, revisit the hypothesis before another speculative edit or push.
+- Change a test expectation only when the required behavior shows it is wrong. An error message alone is not evidence that an assertion should be weakened.
 
 Prefer one correct shared fix over repeated local workarounds.
 
